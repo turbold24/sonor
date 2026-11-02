@@ -52,7 +52,7 @@ Agent code depends only on `model.types.ts`. `MODEL_PROVIDER` and `MODEL_ID` sel
 
 ## Architecture
 
-Solid boxes are implemented. Dashed boxes are planned.
+Boxes marked "planned" (drawn dashed) are not in the repository yet. The rest are implemented.
 
 ```mermaid
 flowchart LR
@@ -62,14 +62,14 @@ flowchart LR
     platformApi["Owner's platform<br/>HTTP integration API<br/>(pre-existing, not in this repo)"]
 
     subgraph sonor ["Sonor API (NestJS)"]
-        webhook["Messenger webhook"]
-        agent["Agent loop"]
+        webhook["Messenger webhook<br/>(planned)"]
+        agent["Agent loop<br/>(planned)"]
         model["ModelService<br/>daily token budget"]
         provider["MetaModelProvider<br/>Responses API"]
-        connectors["Connector interface"]
-        demo["DemoConnector"]
-        platform["PlatformConnector"]
-        handoff["Handoff<br/>Conversation.botPaused"]
+        connectors["Connector interface<br/>(planned)"]
+        demo["DemoConnector<br/>(planned)"]
+        platform["PlatformConnector<br/>(planned)"]
+        handoff["Handoff<br/>Conversation.botPaused<br/>(planned)"]
         db[("PostgreSQL")]
     end
 
