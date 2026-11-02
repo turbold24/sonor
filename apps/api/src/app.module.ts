@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AgentModule } from './agent/agent.module.js';
 import { DevModule } from './dev/dev.module.js';
 import { HealthModule } from './health/health.module.js';
+import { MessengerModule } from './messenger/messenger.module.js';
 import { ModelModule } from './model/model.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 
@@ -17,6 +18,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     PrismaModule,
     ModelModule,
     AgentModule,
+    MessengerModule,
     HealthModule,
     ...(process.env.NODE_ENV === 'production' ? [] : [DevModule]),
   ],
