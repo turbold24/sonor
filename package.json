@@ -25,7 +25,8 @@
     "db:deploy": "pnpm --filter @sonor/api db:deploy",
     "db:seed": "pnpm --filter @sonor/api db:seed",
     "db:reset": "pnpm --filter @sonor/api db:reset",
-    "db:studio": "pnpm --filter @sonor/api db:studio"
+    "db:studio": "pnpm --filter @sonor/api db:studio",
+    "model:smoke": "pnpm --filter @sonor/api model:smoke"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
