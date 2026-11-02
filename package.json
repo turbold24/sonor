@@ -1,0 +1,33 @@
+{
+  "name": "sonor",
+  "version": "0.0.1",
+  "description": "Mongolian-language AI sales agent for small businesses on Facebook Messenger",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @sonor/api start:dev",
+    "build": "pnpm -r build",
+    "start": "pnpm --filter @sonor/api start:prod",
+    "test": "pnpm -r test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.1.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.4.0",
+    "prettier": "^3.6.2",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1"
+  }
+}
