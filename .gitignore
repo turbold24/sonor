@@ -6,6 +6,9 @@ dist/
 coverage/
 *.tsbuildinfo
 
+# Generated Prisma client (pnpm install / pnpm db:generate)
+apps/api/src/generated/
+
 # Environment: never commit secrets
 .env
 .env.*
