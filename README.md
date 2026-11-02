@@ -4,7 +4,7 @@ A Mongolian-language AI sales agent for small businesses on Facebook Messenger, 
 
 **Demo video:** TODO: add the demo video link.
 
-> **Status, 2 Nov 2026.** Implemented and tested: the multi-tenant data model, two fictional demo shops, and the Muse Spark model layer (tool calling, encrypted reasoning replay, retries, per-tenant daily token budget). **Planned**, not in the repository yet: the agent loop, the Messenger webhook, the data connectors, owner handoff and the evaluation suite. Each section below says which parts exist.
+> **Status, 2 Nov 2026.** Implemented and tested: the multi-tenant data model, two fictional demo shops, the Muse Spark model layer (tool calling, encrypted reasoning replay, retries, per-tenant daily token budget), and Cyrillic/Latin text normalization for search. **Planned**, not in the repository yet: the agent loop, the Messenger webhook, the data connectors, owner handoff and the evaluation suite. Each section below says which parts exist.
 
 ## The problem
 
@@ -21,7 +21,7 @@ The agent loop isn't built yet, so this is the planned path of one conversation 
 3. The agent sends the conversation and its tools to Muse Spark through `ModelService.chat`.
    _Implemented and tested (model layer)._
 4. Muse Spark calls a catalog tool. The `DemoConnector` matches the Latin-script query to the Cyrillic product "Ноолууран малгай": 59,000₮, 15 in stock.
-   _Planned: the connector and the search. The product is in the seeded demo catalog._
+   _Planned: the connector and the catalog search. The product is in the seeded demo catalog, and the normalization the search will use exists: the query reduces to the search tokens `noluran malgai`, the same key as the Cyrillic product name._
 5. The agent replies in Mongolian with the price and availability.
    _Planned._
 6. If the customer wants to buy, the agent drafts an order with prices read from the database and sends a payment link.
@@ -93,13 +93,13 @@ flowchart LR
     class webhook,agent,connectors,demo,platform,handoff planned
 ```
 
-| Path                      | Contents                                                       |
-| ------------------------- | -------------------------------------------------------------- |
-| `apps/api/src/model`      | Provider-neutral model interface, `ModelService`, token budget |
-| `apps/api/src/model/meta` | Muse Spark provider and Responses API mapping                  |
-| `apps/api/src/common`     | AES-256-GCM helper for secrets at rest                         |
-| `apps/api/prisma`         | Schema, migrations, seed and fictional demo data               |
-| `apps/api/scripts`        | `model-smoke.ts`, the live model check                         |
+| Path                      | Contents                                                             |
+| ------------------------- | -------------------------------------------------------------------- |
+| `apps/api/src/model`      | Provider-neutral model interface, `ModelService`, token budget       |
+| `apps/api/src/model/meta` | Muse Spark provider and Responses API mapping                        |
+| `apps/api/src/common`     | AES-256-GCM helper for secrets at rest, Cyrillic/Latin normalization |
+| `apps/api/prisma`         | Schema, migrations, seed and fictional demo data                     |
+| `apps/api/scripts`        | `model-smoke.ts`, the live model check                               |
 
 ### Tool loop
 
@@ -113,9 +113,15 @@ Each business is a `Tenant`, and every other table carries a `tenantId` with a c
 
 ### Cross-script Mongolian search
 
-Planned. Customers type Mongolian in Cyrillic or in informal Latin transliteration, while catalogs are in Cyrillic. The demo catalog is Cyrillic-only so it can exercise this.
+Customers type Mongolian in Cyrillic or in informal Latin transliteration, often mixed, while catalogs are in Cyrillic. The demo catalog is Cyrillic-only so it can exercise this.
 
-TODO: describe the matching approach once it's implemented.
+Implemented and tested (`apps/api/src/common/mongolian-script.ts`):
+
+- `toLatinKey` reduces both scripts to one lowercase Latin key used only for matching, never for display. It transliterates Cyrillic, then collapses common informal spellings: `kh` and `x` to `h` (хэд: khed, hed), `c` to `ts` (цамц: camc), `v` not followed by a vowel to `u` (үнэ: vne), `y` to `i` unless `a`, `o` or `u` follows (малгай: malgay), and doubled vowels to one (дээл: deel, del).
+- `searchTokens` splits the key into words and drops question and filler words in both scripts ("үнэ", "хэд", "вэ", "байгаа", "bga" and so on).
+- `detectScript` reports whether a message is mostly Cyrillic or Latin, so the reply can match the customer's script.
+
+Planned: using these in the connectors' catalog search and in the agent's reply.
 
 ### Grounding check
 
@@ -141,7 +147,7 @@ Implemented and tested:
 
 ## What was built during the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026)
 
-**Everything in this repository was written during the hackathon.** The first commit is `5fb954f` on 2026-11-02 at 12:11 (UTC+8). The latest commit when this README was written is the one that adds it, on 2026-11-02. You can check with `git log --reverse --date=iso`.
+**Everything in this repository was written during the hackathon.** The first commit is `5fb954f` on 2026-11-02 at 12:11 (UTC+8). The latest commit when this README was written is from 2026-11-02. You can check with `git log --reverse --date=iso`.
 
 TODO: update the latest commit date before submission.
 
@@ -164,7 +170,8 @@ Timeline (from `git log`, times UTC+8):
 | Nov 2, 12:11   | Repository setup: pnpm workspace, ESLint and Prettier, NestJS app with `/health`, Docker Compose Postgres, first README                         |
 | Nov 2, 12:31   | Prisma 7 with PostgreSQL, data model and first migration, AES-256-GCM helper for secrets, seed with two fictional shops                         |
 | Nov 2, 13:26   | Model layer: provider-neutral interface, Muse Spark provider on the Responses API, per-tenant daily token limit, unit tests, `pnpm model:smoke` |
-| Nov 2          | This README                                                                                                                                     |
+| Nov 2, 18:09   | This README                                                                                                                                     |
+| Nov 2, 18:09   | Cyrillic/Latin normalization for search (`toLatinKey`, `searchTokens`, `detectScript`) with tests                                               |
 | TODO           | Add later work (agent loop, webhook, connectors, evaluation) as it lands, and any work done outside this repository.                            |
 
 ## Evaluation
@@ -179,7 +186,7 @@ What runs today:
 - `pnpm --filter @sonor/api test:e2e`: boots the app and calls `GET /health`. Needs `DATABASE_URL` set, but not a running database.
 - `pnpm model:smoke`: live check against the Meta Model API (needs `MODEL_API_KEY`, costs a few thousand tokens). It sends a short Mongolian message, then a message with a dummy `get_weather` tool, checks that the tool call parses, returns a fake result and checks the final answer. This also exercises encrypted reasoning replay.
 
-Latest results, run on 2026-11-02 at commit `dcf6735`:
+Latest results, run on 2026-11-02 at commit `c606068`: 77 of 77 unit tests and 1 of 1 end-to-end test pass.
 
 | Suite                      | File                                           | Passed | What it checks                                                                                                                                                                                                              |
 | -------------------------- | ---------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -187,6 +194,7 @@ Latest results, run on 2026-11-02 at commit `dcf6735`:
 | Muse Spark provider (HTTP) | `src/model/meta/meta-model.provider.spec.ts`   | 13/13  | Bearer auth to `/v1/responses`, output cap, retries on 429 and 5xx with backoff and `Retry-After`, no retries on 400/401/402/504, timeouts, missing key, API key kept out of errors and logs                                |
 | Model service              | `src/model/model.service.spec.ts`              | 4/4    | Usage recorded per tenant, calls refused at the daily limit, logs counts but not prompts or replies, failures logged without recording usage                                                                                |
 | Model config               | `src/model/model.config.spec.ts`               | 8/8    | Defaults to Muse Spark 1.3, env overrides, rejects invalid values                                                                                                                                                           |
+| Cyrillic/Latin matching    | `src/common/mongolian-script.spec.ts`          | 33/33  | Cyrillic and informal Latin spellings reduce to the same key (including demo product names), digits kept and punctuation dropped, filler words removed, script detection on mixed messages                                  |
 | Encryption                 | `src/common/encryption.spec.ts`                | 8/8    | Round trips (including Mongolian text), fresh IV per call, wrong key, tampered and malformed payloads, key parsing                                                                                                          |
 | Health                     | `src/health/health.controller.spec.ts`         | 1/1    | `/health` reports ok                                                                                                                                                                                                        |
 | Health, end to end         | `test/app.e2e-spec.ts`                         | 1/1    | `GET /health` on the running app                                                                                                                                                                                            |
