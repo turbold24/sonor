@@ -89,6 +89,24 @@ model Tenant {
   orders        Order[]
   orderItems    OrderItem[]
   paymentLinks  PaymentLink[]
+  tokenUsage    TokenUsage[]
+}
+
+/// Model token usage per tenant per UTC day, used to enforce DAILY_TOKEN_LIMIT.
+model TokenUsage {
+  id           String   @id @default(cuid())
+  tenantId     String
+  day          DateTime @db.Date
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  totalTokens  Int      @default(0)
+  requests     Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Also serves as the tenantId index.
+  @@unique([tenantId, day])
 }
 
 /// Local catalog, used by DEMO tenants only.
