@@ -6,7 +6,7 @@ Customers ask about products, prices and availability in Mongolian, in Cyrillic 
 
 The agent runs on **Muse Spark via the Meta Model API**. Built for the Meta Global AI Developer Hackathon (Startup track).
 
-> Status: early scaffold. The API currently exposes a health check; the agent, Messenger webhook and connectors are coming next.
+> Status: early build. The database schema and demo data are in place, and the API exposes a health check. The agent, Messenger webhook and connectors are coming next.
 
 ## How it works
 
@@ -22,19 +22,54 @@ TypeScript, NestJS, Prisma + PostgreSQL, pnpm workspace.
 
 ```
 apps/api            NestJS backend
+apps/api/prisma     Schema, migrations, demo seed
 docker-compose.yml  Local Postgres
 ```
 
+## Data model
+
+Each business is a `Tenant`, and every other table carries a `tenantId`. Tables: `Tenant`, `Product` (DEMO tenants only), `Customer`, `Conversation`, `Message`, `Order`, `OrderItem`, `PaymentLink`.
+
+Page access tokens and platform API keys are encrypted at rest with AES-256-GCM using `ENCRYPTION_KEY`. Order items store a server-side snapshot of the unit price. Prices are whole tögrög (MNT).
+
+## Demo data
+
+`pnpm db:seed` creates two fictional shops with placeholder Page IDs and no real tokens:
+
+- **Салхин Дээл**: modern deel and winter wear, 12 products with sizes and colors
+- **Шүүдэр Гоо**: cosmetics, 11 products
+
+Some items are out of stock, a few are low, and one is inactive, so you can test how the agent handles them. Re-running the seed replaces each shop's catalog. It never overwrites a Page ID or token you have set on a tenant.
+
 ## Run locally
 
-Requirements: Node.js 22+, pnpm 11, Docker.
+Requirements: Node.js 22.18+ (or 24.11+), pnpm 11, Docker.
 
-```bash
-pnpm install
-cp .env.example .env
-pnpm db:up      # Postgres on localhost:5433
-pnpm dev        # API on http://localhost:3000
-```
+1. Install dependencies. This also generates the Prisma client.
+
+   ```bash
+   pnpm install
+   ```
+
+2. Create your `.env`, then set `ENCRYPTION_KEY` to the output of `openssl rand -base64 32`.
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Start Postgres (localhost:5433), apply migrations and load demo data.
+
+   ```bash
+   pnpm db:up
+   pnpm db:migrate
+   pnpm db:seed
+   ```
+
+4. Run the API on http://localhost:3000.
+
+   ```bash
+   pnpm dev
+   ```
 
 Check it's up:
 
@@ -45,11 +80,16 @@ curl http://localhost:3000/health
 
 ### Scripts
 
-| Command                        | What it does                     |
-| ------------------------------ | -------------------------------- |
-| `pnpm dev`                     | Run the API in watch mode        |
-| `pnpm build` / `pnpm start`    | Build, then run the compiled API |
-| `pnpm test`                    | Unit tests (Vitest)              |
-| `pnpm lint`                    | ESLint                           |
-| `pnpm format` / `format:check` | Prettier                         |
-| `pnpm db:up` / `pnpm db:down`  | Start / stop local Postgres      |
+| Command                        | What it does                                                           |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| `pnpm dev`                     | Run the API in watch mode                                              |
+| `pnpm build` / `pnpm start`    | Build, then run the compiled API                                       |
+| `pnpm test`                    | Unit tests (Vitest)                                                    |
+| `pnpm lint`                    | ESLint                                                                 |
+| `pnpm format` / `format:check` | Prettier                                                               |
+| `pnpm db:up` / `pnpm db:down`  | Start / stop local Postgres                                            |
+| `pnpm db:migrate`              | Apply migrations; with a schema change, create one (`--name <change>`) |
+| `pnpm db:seed`                 | Load the demo shops                                                    |
+| `pnpm db:reset`                | Drop the local database, re-apply migrations, re-seed                  |
+| `pnpm db:generate`             | Regenerate the Prisma client                                           |
+| `pnpm db:studio`               | Browse data in Prisma Studio                                           |

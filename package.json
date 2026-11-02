@@ -7,7 +7,7 @@
   "type": "module",
   "packageManager": "pnpm@11.22.0",
   "engines": {
-    "node": ">=22"
+    "node": "^22.18.0 || ^24.11.0 || >=26.0.0"
   },
   "scripts": {
     "dev": "pnpm --filter @sonor/api start:dev",
@@ -18,8 +18,14 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "db:up": "docker compose up -d",
-    "db:down": "docker compose down"
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:generate": "pnpm --filter @sonor/api db:generate",
+    "db:migrate": "pnpm --filter @sonor/api db:migrate",
+    "db:deploy": "pnpm --filter @sonor/api db:deploy",
+    "db:seed": "pnpm --filter @sonor/api db:seed",
+    "db:reset": "pnpm --filter @sonor/api db:reset",
+    "db:studio": "pnpm --filter @sonor/api db:studio"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
