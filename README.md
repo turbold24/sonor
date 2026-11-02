@@ -6,7 +6,7 @@ Customers ask about products, prices and availability in Mongolian, in Cyrillic 
 
 The agent runs on **Muse Spark via the Meta Model API**. Built for the Meta Global AI Developer Hackathon (Startup track).
 
-> Status: early build. The database schema and demo data are in place, and the API exposes a health check. The agent, Messenger webhook and connectors are coming next.
+> Status: early build. The database schema, demo data and model layer are in place, and the API exposes a health check. The agent, Messenger webhook and connectors are coming next.
 
 ## How it works
 
@@ -41,6 +41,27 @@ Page access tokens and platform API keys are encrypted at rest with AES-256-GCM 
 
 Some items are out of stock, a few are low, and one is inactive, so you can test how the agent handles them. Re-running the seed replaces each shop's catalog. It never overwrites a Page ID or token you have set on a tenant.
 
+## Model
+
+Sonor calls **Muse Spark 1.3** (`muse-spark-1.3`) through the Meta Model API's Responses endpoint (`POST https://api.meta.ai/v1/responses`). Requests are stateless (`store: false`), so Meta keeps no copy of the conversation. The model's encrypted reasoning is passed back on the next turn so it keeps its train of thought through tool calls.
+
+The agent talks to a provider-neutral `ModelProvider` interface (`apps/api/src/model`). `MODEL_PROVIDER` and `MODEL_ID` select the implementation, so another provider (for example Muse Spark Open behind an OpenAI-compatible endpoint) can be added without changing agent code.
+
+Cost and safety controls, all set in `.env`:
+
+- `MODEL_TIMEOUT_MS` per request, with up to `MODEL_MAX_RETRIES` retries (exponential backoff) for 429 and 5xx responses only
+- `MODEL_MAX_OUTPUT_TOKENS` per call (includes reasoning tokens)
+- `DAILY_TOKEN_LIMIT` per tenant per UTC day. Usage is stored in the `TokenUsage` table, and new calls are refused once the limit is reached.
+- Logs record token counts and timings only, never prompts, replies or the API key
+
+To check your key and the model end to end:
+
+```bash
+pnpm model:smoke
+```
+
+It sends a short Mongolian message, then a message with a dummy `get_weather` tool, checks that the tool call parses, and returns a fake result for a final answer.
+
 ## Run locally
 
 Requirements: Node.js 22.18+ (or 24.11+), pnpm 11, Docker.
@@ -51,7 +72,7 @@ Requirements: Node.js 22.18+ (or 24.11+), pnpm 11, Docker.
    pnpm install
    ```
 
-2. Create your `.env`, then set `ENCRYPTION_KEY` to the output of `openssl rand -base64 32`.
+2. Create your `.env`, then set `ENCRYPTION_KEY` to the output of `openssl rand -base64 32`. To use the model, also set `MODEL_API_KEY` to a key from the Model API dashboard.
 
    ```bash
    cp .env.example .env
@@ -92,4 +113,5 @@ curl http://localhost:3000/health
 | `pnpm db:seed`                 | Load the demo shops                                                    |
 | `pnpm db:reset`                | Drop the local database, re-apply migrations, re-seed                  |
 | `pnpm db:generate`             | Regenerate the Prisma client                                           |
+| `pnpm model:smoke`             | Live check of the model API (needs `MODEL_API_KEY`)                    |
 | `pnpm db:studio`               | Browse data in Prisma Studio                                           |
