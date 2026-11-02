@@ -1,0 +1,237 @@
+// Sonor data model. Every model except Tenant carries a tenantId so all
+// queries can be scoped to a single business.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ConnectorType {
+  DEMO
+  PLATFORM
+}
+
+enum AgentTone {
+  FRIENDLY
+  FORMAL
+  CASUAL
+}
+
+enum Currency {
+  MNT
+}
+
+enum ConversationStatus {
+  OPEN
+  CLOSED
+}
+
+enum MessageRole {
+  CUSTOMER
+  AGENT
+  OWNER
+  SYSTEM
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  PAID
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentProvider {
+  QPAY
+}
+
+enum PaymentLinkStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+model Tenant {
+  id           String @id @default(cuid())
+  name         String
+  slug         String @unique
+  businessType String
+
+  facebookPageId           String @unique
+  /// AES-256-GCM ciphertext (see src/common/encryption.ts), never the raw token.
+  pageAccessTokenEncrypted String
+
+  connectorType           ConnectorType @default(DEMO)
+  platformBaseUrl         String?
+  /// AES-256-GCM ciphertext, set only for PLATFORM tenants.
+  platformApiKeyEncrypted String?
+
+  agentTone           AgentTone @default(FRIENDLY)
+  agentGreeting       String?
+  /// Shown to the customer when the agent hands the chat to a human.
+  agentHandoffContact String?
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products      Product[]
+  customers     Customer[]
+  conversations Conversation[]
+  messages      Message[]
+  orders        Order[]
+  orderItems    OrderItem[]
+  paymentLinks  PaymentLink[]
+}
+
+/// Local catalog, used by DEMO tenants only.
+model Product {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  /// Whole tögrög.
+  price       Int
+  currency    Currency @default(MNT)
+  stock       Int      @default(0)
+  category    String?
+  /// Free-form options, e.g. { "sizes": ["S", "M"], "colors": ["хар"] }.
+  attributes  Json?
+  imageUrl    String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@index([tenantId])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  tenantId  String
+  /// Page-scoped user ID from Messenger.
+  psid      String
+  name      String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  orders        Order[]
+
+  // Also serves as the tenantId index.
+  @@unique([tenantId, psid])
+}
+
+model Conversation {
+  id            String             @id @default(cuid())
+  tenantId      String
+  customerId    String
+  status        ConversationStatus @default(OPEN)
+  /// True while the owner has taken over; the agent stays silent.
+  botPaused     Boolean            @default(false)
+  pausedAt      DateTime?
+  lastMessageAt DateTime           @default(now())
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  messages Message[]
+  orders   Order[]
+
+  @@index([tenantId])
+  @@index([customerId])
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  tenantId       String
+  conversationId String
+  role           MessageRole
+  text           String?
+  attachments    Json?
+  toolCalls      Json?
+  /// Messenger message ID (mid), used to ignore webhook redeliveries.
+  externalId     String?
+  createdAt      DateTime    @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId])
+  @@index([conversationId, createdAt])
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  tenantId       String
+  customerId     String
+  conversationId String?
+  status         OrderStatus @default(DRAFT)
+  /// Whole tögrög, computed on the server from item snapshots.
+  total          Int
+  currency       Currency    @default(MNT)
+  expiresAt      DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  items        OrderItem[]
+  paymentLinks PaymentLink[]
+
+  @@index([tenantId])
+  @@index([customerId])
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  tenantId    String
+  orderId     String
+  /// Null if the product was later deleted; the snapshots below keep the order readable.
+  productId   String?
+  productName String
+  quantity    Int
+  /// Whole tögrög, read from the server at order time, never from the model's output.
+  unitPrice   Int
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([orderId])
+}
+
+model PaymentLink {
+  id                String            @id @default(cuid())
+  tenantId          String
+  orderId           String
+  provider          PaymentProvider   @default(QPAY)
+  status            PaymentLinkStatus @default(PENDING)
+  externalInvoiceId String?
+  paymentUrl        String?
+  qrText            String?
+  createdAt         DateTime          @default(now())
+  paidAt            DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalInvoiceId])
+  @@index([tenantId])
+  @@index([orderId])
+}
