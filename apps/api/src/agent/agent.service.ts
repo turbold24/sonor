@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { toolError } from '../catalog/catalog.types.js';
 import { ConnectorRegistry } from '../catalog/connector.registry.js';
 import { detectScript } from '../common/mongolian-script.js';
@@ -20,6 +21,7 @@ import {
   buildSystemPrompt,
   fallbackReply,
   groundingCorrection,
+  unsupportedMediaReply,
 } from './agent.prompt.js';
 import {
   runAgentTurn,
@@ -34,6 +36,18 @@ import { validateToolArgs } from './tool-args.js';
 const MAX_ITERATIONS = 4;
 const HISTORY_LIMIT = 30;
 const MAX_TOOL_OUTPUT_CHARS = 6000;
+const DEFAULT_PAUSE_HOURS = 12;
+
+export interface IncomingMessage {
+  /** Empty for attachment-only messages. */
+  text: string;
+  /** Channel message ID (Messenger mid). A message seen before is ignored. */
+  externalId?: string;
+  attachments?: Prisma.InputJsonValue;
+}
+
+/** ready: answer it; paused: a human is handling the chat; duplicate: already received. */
+export type ReceiveStatus = 'ready' | 'paused' | 'duplicate';
 
 export interface AgentToolCall {
   name: string;
@@ -42,9 +56,10 @@ export interface AgentToolCall {
 }
 
 export interface AgentReply {
-  /** Null when the conversation is paused for a human. */
+  /** Null when the agent stays silent (paused or duplicate). */
   reply: string | null;
   paused: boolean;
+  duplicate: boolean;
   handoff: boolean;
   toolCalls: AgentToolCall[];
   usage: TokenUsage & { calls: number };
@@ -61,29 +76,98 @@ interface TurnContext {
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
+  private readonly pauseMs: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly model: ModelService,
     private readonly connectors: ConnectorRegistry,
-  ) {}
+    config: ConfigService,
+  ) {
+    const hours = Number(config.get<string>('BOT_PAUSE_HOURS'));
+    this.pauseMs =
+      (Number.isFinite(hours) && hours > 0 ? hours : DEFAULT_PAUSE_HOURS) *
+      3_600_000;
+  }
 
+  /** Saves the customer's message and, unless the bot is paused, answers it. */
   async reply(
     tenantId: string,
     conversationId: string,
     customerText: string,
+    message: Omit<IncomingMessage, 'text'> = {},
   ): Promise<AgentReply> {
-    const conversation = await this.prisma.conversation.findFirst({
-      where: { id: conversationId, tenantId },
-      include: { tenant: true },
+    const status = await this.receive(tenantId, conversationId, {
+      ...message,
+      text: customerText,
     });
-    if (!conversation) throw new NotFoundException('Conversation not found');
+    if (status !== 'ready') return silentReply(status);
+    return this.respond(tenantId, conversationId, customerText);
+  }
+
+  /**
+   * Saves an incoming customer message (once per externalId) and says whether to answer
+   * it. A paused conversation resumes on its own after BOT_PAUSE_HOURS.
+   */
+  async receive(
+    tenantId: string,
+    conversationId: string,
+    message: IncomingMessage,
+  ): Promise<ReceiveStatus> {
+    const conversation = await this.findConversation(tenantId, conversationId);
+    const now = new Date();
+    const { count } = await this.prisma.message.createMany({
+      data: [
+        {
+          tenantId,
+          conversationId,
+          role: 'CUSTOMER',
+          text: message.text.trim() || null,
+          externalId: message.externalId,
+          attachments: message.attachments,
+          createdAt: now,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    if (count === 0) return 'duplicate';
+    await this.prisma.conversation.updateMany({
+      where: { id: conversationId, tenantId },
+      data: { lastMessageAt: now },
+    });
+
+    if (!conversation.tenant.active) return 'paused';
+    if (!conversation.botPaused) return 'ready';
+    const pausedAt = conversation.pausedAt?.getTime() ?? now.getTime();
+    if (now.getTime() - pausedAt < this.pauseMs) return 'paused';
+
+    await this.prisma.conversation.updateMany({
+      where: { id: conversationId, tenantId },
+      data: { botPaused: false, pausedAt: null },
+    });
+    this.logger.log(
+      `bot resumed after pause tenant=${tenantId} conversation=${conversationId}`,
+    );
+    return 'ready';
+  }
+
+  /** Answers the latest customer message, which receive() has already saved. */
+  async respond(
+    tenantId: string,
+    conversationId: string,
+    customerText: string,
+  ): Promise<AgentReply> {
+    const conversation = await this.findConversation(tenantId, conversationId);
     const { tenant } = conversation;
 
-    await this.save(tenant.id, conversationId, [
-      { role: 'CUSTOMER', text: customerText },
-    ]);
-    if (conversation.botPaused || !tenant.active) return pausedReply();
+    if (!customerText.trim()) {
+      // Attachments only (photo, voice, sticker): the agent reads text for now.
+      const reply = unsupportedMediaReply();
+      await this.save(tenant.id, conversationId, [
+        { role: 'AGENT', text: reply },
+      ]);
+      return { ...silentReply('ready'), reply };
+    }
 
     const connector = this.connectors.forTenant(tenant);
     const [connectorTools, brief, rows] = await Promise.all([
@@ -189,6 +273,7 @@ export class AgentService {
     return {
       reply,
       paused: false,
+      duplicate: false,
       handoff: toolCalls.some((call) => call.name === HANDOFF_TOOL_NAME),
       toolCalls,
       usage: outcome?.usage ?? emptyUsage(),
@@ -235,6 +320,15 @@ export class AgentService {
     }
   }
 
+  private async findConversation(tenantId: string, conversationId: string) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+      include: { tenant: true },
+    });
+    if (!conversation) throw new NotFoundException('Conversation not found');
+    return conversation;
+  }
+
   private async save(
     tenantId: string,
     conversationId: string,
@@ -272,10 +366,11 @@ function serialize(value: unknown): string {
     : json;
 }
 
-function pausedReply(): AgentReply {
+function silentReply(status: ReceiveStatus): AgentReply {
   return {
     reply: null,
-    paused: true,
+    paused: status === 'paused',
+    duplicate: status === 'duplicate',
     handoff: false,
     toolCalls: [],
     usage: emptyUsage(),

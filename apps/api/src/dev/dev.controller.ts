@@ -4,6 +4,7 @@ import {
   Controller,
   HttpCode,
   NotFoundException,
+  Param,
   Post,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -35,9 +36,7 @@ export class DevController {
   @Post('chat')
   @HttpCode(200)
   async chat(@Body() body: unknown): Promise<DevChatResponse> {
-    if (this.config.get<string>('NODE_ENV') === 'production') {
-      throw new NotFoundException();
-    }
+    this.assertNotProduction();
     const { tenantSlug, customerRef, text } = parseRequest(body);
 
     const tenant = await this.prisma.tenant.findUnique({
@@ -52,6 +51,32 @@ export class DevController {
     );
     const reply = await this.agent.reply(tenant.id, conversation.id, text);
     return { conversationId: conversation.id, ...reply };
+  }
+
+  /** Lets the bot answer again in a conversation paused by a handoff or the owner. */
+  @Post('conversations/:conversationId/resume')
+  @HttpCode(200)
+  async resume(
+    @Param('conversationId') conversationId: string,
+  ): Promise<{ conversationId: string; resumed: true }> {
+    this.assertNotProduction();
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { tenantId: true },
+    });
+    if (
+      !conversation ||
+      !(await this.conversations.resume(conversation.tenantId, conversationId))
+    ) {
+      throw new NotFoundException('Conversation not found');
+    }
+    return { conversationId, resumed: true };
+  }
+
+  private assertNotProduction(): void {
+    if (this.config.get<string>('NODE_ENV') === 'production') {
+      throw new NotFoundException();
+    }
   }
 }
 

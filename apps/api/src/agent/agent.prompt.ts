@@ -60,6 +60,11 @@ export function groundingCorrection(prices: number[]): string {
   return `Анхаар: чиний хариултад энэ удаагийн хэрэгслийн үр дүнд байхгүй үнэ (${prices.join(', ')}) байна. Үнийг зөвхөн search_products эсвэл get_product-ийн үр дүнгээс яг хуулж хэл, шаардлагатай бол хэрэгслийг дахин дууд. Нийт дүн, хөнгөлөлт бүү тооцоол. Хариултаа дахин бич.`;
 }
 
+/** Reply to photos, voice messages and stickers until the agent can read them. */
+export function unsupportedMediaReply(): string {
+  return 'Уучлаарай, би одоогоор зөвхөн текст мессеж уншиж чаддаг. Асуултаа бичээд илгээнэ үү.';
+}
+
 /** Safe reply when the agent can't give a grounded answer. */
 export function fallbackReply(tenant: PromptTenant, script: Script): string {
   const text =
