@@ -37,6 +37,8 @@ enum MessageRole {
   AGENT
   OWNER
   SYSTEM
+  /// A tool result. toolCalls holds { callId, name }; text holds the output given to the model.
+  TOOL
 }
 
 enum OrderStatus {
