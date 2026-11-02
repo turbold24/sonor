@@ -27,7 +27,8 @@
     "db:reset": "pnpm --filter @sonor/api db:reset",
     "db:studio": "pnpm --filter @sonor/api db:studio",
     "model:smoke": "pnpm --filter @sonor/api model:smoke",
-    "agent:eval": "pnpm --filter @sonor/api agent:eval"
+    "agent:eval": "pnpm --filter @sonor/api agent:eval",
+    "tenant:connect-page": "pnpm --filter @sonor/api tenant:connect-page"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

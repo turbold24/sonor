@@ -23,7 +23,8 @@
     "db:reset": "prisma migrate reset --force && prisma db seed",
     "db:studio": "prisma studio",
     "model:smoke": "tsx scripts/model-smoke.ts",
-    "agent:eval": "tsc -p tsconfig.scripts.json && node dist-scripts/scripts/agent-eval.js"
+    "agent:eval": "tsc -p tsconfig.scripts.json && node dist-scripts/scripts/agent-eval.js",
+    "tenant:connect-page": "tsx scripts/connect-page.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
