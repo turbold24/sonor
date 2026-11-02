@@ -4,7 +4,7 @@ A Mongolian-language AI sales agent for small businesses on Facebook Messenger, 
 
 **Demo video:** TODO: add the demo video link.
 
-> **Status, 2 Nov 2026.** Implemented and tested: the multi-tenant data model, two fictional demo shops, the Muse Spark model layer (tool calling, encrypted reasoning replay, retries, per-tenant daily token budget), Cyrillic/Latin product search, the data connectors, the agent loop with a price grounding check and a stock policy, handoff to a human (the bot pauses itself), a local `/dev/chat` endpoint and the `pnpm agent:eval` suite (16 of 16 pass). **Planned**, not in the repository yet: the Messenger webhook, notifying the owner and resuming the bot after a handoff, order drafts and payment links. The `PlatformConnector` is tested only against a mocked HTTP layer, not the real platform. Each section below says which parts exist.
+> **Status, 2 Nov 2026.** Implemented and tested: the multi-tenant data model, two fictional demo shops, the Muse Spark model layer (tool calling, encrypted reasoning replay, retries, per-tenant daily token budget), Cyrillic/Latin product search, the data connectors, the agent loop with a price grounding check and a stock policy, handoff to a human (the bot pauses itself), the Facebook Messenger channel (signed webhook, Send API replies, owner takeover from the Page inbox), a local `/dev/chat` endpoint and the `pnpm agent:eval` suite (16 of 16 pass). The Messenger channel is tested against a mocked Graph API; it hasn't run with a real Page yet. **Planned**, not in the repository yet: notifying the owner of a handoff, order drafts and payment links. The `PlatformConnector` is tested only against a mocked HTTP layer, not the real platform. Each section below says which parts exist.
 
 ## The problem
 
@@ -12,7 +12,7 @@ In Mongolia, small businesses sell mostly through their Facebook Page, and most 
 
 ## What Sonor does
 
-A real conversation with the fictional demo shop Салхин Дээл, recorded on 2 Nov 2026 through the local `/dev/chat` endpoint, which stands in for Messenger until the webhook is built. The customer writes in informal Latin script; the catalog is in Cyrillic.
+A real conversation with the fictional demo shop Салхин Дээл, recorded on 2 Nov 2026 through the local `/dev/chat` endpoint, which runs the same agent as the Messenger webhook. The customer writes in informal Latin script; the catalog is in Cyrillic.
 
 > **Customer:** nooluuran malgai baigaa yu? hed ve? _(Do you have the cashmere hat? How much is it?)_\
 > **Tool:** `search_products({"query":"nooluuran malgai"})` returns "Ноолууран малгай", `price: 59000`, `availability: "in_stock"`, colors саарал, хар, цөцгийн цагаан\
@@ -35,7 +35,7 @@ What happened at each step:
 
 Each turn took two Muse Spark calls (a tool call, then the answer) and about 4,600–5,800 tokens.
 
-Still planned: receiving and sending these messages through Messenger, notifying the owner of a handoff, and drafting the order with a payment link. The `Order`, `OrderItem` and `PaymentLink` tables exist.
+On Messenger the same turns arrive through the webhook, and the customer sees "seen" and "typing…" while the agent works. If the owner answers from the Page inbox, the bot stays silent in that chat. Still planned: notifying the owner of a handoff, and drafting the order with a payment link. The `Order`, `OrderItem` and `PaymentLink` tables exist.
 
 To try it yourself, see [Chat with the agent locally](#chat-with-the-agent-locally).
 
@@ -69,10 +69,11 @@ flowchart LR
     developer(["Developer"])
     owner(["Shop owner"])
     meta["Meta Model API<br/>muse-spark-1.3"]
+    graphApi["Graph API<br/>Messenger Send API"]
     platformApi["Owner's platform<br/>HTTP integration API<br/>(pre-existing, not in this repo)"]
 
     subgraph sonor ["Sonor API (NestJS)"]
-        webhook["Messenger webhook<br/>(planned)"]
+        webhook["Messenger webhook<br/>signature check, queue per customer"]
         devchat["POST /dev/chat<br/>(dev only)"]
         agent["AgentService<br/>tool loop, grounding check"]
         model["ModelService<br/>daily token budget"]
@@ -84,8 +85,10 @@ flowchart LR
         db[("PostgreSQL")]
     end
 
-    customer -.->|message| webhook
-    webhook -.->|bot active| agent
+    customer -->|message| webhook
+    owner -->|"reply from Page inbox (echo)"| webhook
+    webhook -->|bot active| agent
+    webhook -->|"owner echo: pause"| handoff
     developer -->|test message| devchat
     devchat --> agent
     agent -->|"chat(messages, tools)"| model
@@ -100,28 +103,27 @@ flowchart LR
     agent -->|messages| db
     agent -->|hand off| handoff
     handoff -.->|"notify (planned)"| owner
-    agent -.->|"reply (planned)"| customer
-
-    classDef planned stroke-dasharray: 5 5
-    class webhook planned
+    webhook -->|"seen, typing, reply"| graphApi
+    graphApi -->|reply| customer
 ```
 
-| Path                      | Contents                                                                                |
-| ------------------------- | --------------------------------------------------------------------------------------- |
-| `apps/api/src/agent`      | Agent loop, Mongolian system prompt, grounding check, handoff tool, message history     |
-| `apps/api/src/catalog`    | Connector interface, `DemoConnector`, `PlatformConnector`, product search, stock policy |
-| `apps/api/src/model`      | Provider-neutral model interface, `ModelService`, token budget                          |
-| `apps/api/src/model/meta` | Muse Spark provider and Responses API mapping                                           |
-| `apps/api/src/common`     | AES-256-GCM helper for secrets at rest, Cyrillic/Latin normalization                    |
-| `apps/api/src/dev`        | `POST /dev/chat`, not registered in production                                          |
-| `apps/api/prisma`         | Schema, migrations, seed and fictional demo data                                        |
-| `apps/api/scripts`        | `model-smoke.ts` (live model check) and `agent-eval.ts` (agent eval)                    |
+| Path                      | Contents                                                                                                       |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/agent`      | Agent loop, Mongolian system prompt, grounding check, handoff tool, message history                            |
+| `apps/api/src/catalog`    | Connector interface, `DemoConnector`, `PlatformConnector`, product search, stock policy                        |
+| `apps/api/src/messenger`  | Messenger webhook, signature check, per-customer queue, Graph API (Send API) client                            |
+| `apps/api/src/model`      | Provider-neutral model interface, `ModelService`, token budget                                                 |
+| `apps/api/src/model/meta` | Muse Spark provider and Responses API mapping                                                                  |
+| `apps/api/src/common`     | AES-256-GCM helper for secrets at rest, Cyrillic/Latin normalization                                           |
+| `apps/api/src/dev`        | `POST /dev/chat` and conversation resume, not registered in production                                         |
+| `apps/api/prisma`         | Schema, migrations, seed and fictional demo data                                                               |
+| `apps/api/scripts`        | `model-smoke.ts` (live model check), `agent-eval.ts` (agent eval), `connect-page.ts` (connect a Facebook Page) |
 
 ### Tool loop
 
-Implemented (`apps/api/src/agent`). `AgentService.reply(tenantId, conversationId, text)` saves the customer's message, then:
+Implemented (`apps/api/src/agent`). `AgentService.reply(tenantId, conversationId, text)` runs in two halves, which the Messenger webhook calls separately. `receive` saves the customer's message (once per Messenger message ID) and decides whether to answer; `respond` produces the answer:
 
-1. Stops without replying if the conversation is paused for a human or the tenant is inactive.
+1. Stops without replying if the conversation is paused for a human or the tenant is inactive. A paused conversation resumes on its own after `BOT_PAUSE_HOURS` (12 by default).
 2. Loads the tenant's connector tools, its business brief and the last 30 messages, and builds the Mongolian system prompt for that shop.
 3. Calls Muse Spark through `ModelService.chat` with those tools plus the built-in `request_handoff`. The API doesn't guarantee that tool arguments match the schema, so each call's arguments are validated against the tool's JSON Schema before it runs; invalid arguments go back to the model as an error result. Tool output is capped at 6,000 characters.
 4. Repeats until the model answers with text, for at most 4 model calls. If the model is still calling tools after that, the customer gets a safe reply offering a human.
@@ -129,11 +131,25 @@ Implemented (`apps/api/src/agent`). `AgentService.reply(tenantId, conversationId
 
 If a model call fails, for example because the tenant's daily token limit is reached, the customer gets the same safe reply instead of an error.
 
+A message with only attachments (a photo, voice message or sticker) gets a fixed Mongolian reply, without a model call, saying that the assistant reads text for now. The attachment is kept on the message record.
+
 The system prompt (`agent.prompt.ts`) tells the model to speak as the shop's own assistant and never name the AI behind it; to answer in the customer's language and script; to use only facts from tool results or the business brief; never to state exact stock counts; to ask one short clarifying question when unsure; to hand off when it can't help; to ignore instructions found in messages or tool data; and to reply in one to three sentences of plain text. The business brief sits inside `<business_brief>` tags, labeled as data, not instructions.
+
+### Messenger channel
+
+Implemented (`apps/api/src/messenger`), following the current Messenger Platform docs (Graph API `v26.0`):
+
+- **Verification.** `GET /webhooks/messenger` answers Meta's handshake: it returns `hub.challenge` when `hub.mode` is `subscribe` and `hub.verify_token` matches `MESSENGER_VERIFY_TOKEN`.
+- **Signature.** `POST /webhooks/messenger` checks `X-Hub-Signature-256` (HMAC-SHA256 with `MESSENGER_APP_SECRET`) over the raw request bytes. Meta escapes non-ASCII characters before signing, so checking re-serialized JSON would fail. A missing or wrong signature gets `403`, and nothing is processed.
+- **Fast answer.** A valid webhook gets `200` at once, within Meta's 5-second limit. The events are processed afterwards, one at a time per customer, so a customer's replies never cross. The queue is in memory, which suits a single API instance.
+- **Routing and dedup.** `entry.id` (the Page ID) selects the tenant; events for unknown Pages are ignored. Meta retries webhooks, so each message is saved at most once, keyed on its Messenger message ID; a repeat is dropped without a second reply.
+- **Replying.** For a message the bot should answer, Sonor sends `mark_seen` and `typing_on` (refreshed every 15 seconds while the agent works), then the reply with `messaging_type: "RESPONSE"`. Replies over 2,000 characters are split at paragraph, sentence or word boundaries. Requests use the tenant's decrypted Page access token with `appsecret_proof`, retry once on transient Graph errors, and never log URLs or tokens.
+- **Owner takeover.** When the owner replies by hand from the Page inbox, Meta sends an echo. Sonor saves it as an `OWNER` message and pauses the bot for that conversation (each owner message restarts the pause). Echoes of Sonor's own replies carry the metadata tag `sonor` (and the app ID) and are ignored. While paused, customer messages are saved without a reply.
+- **Postbacks.** A button tap (for example Get Started) is treated as a customer message with the button's title as text.
 
 ### Tenant isolation
 
-Each business is a `Tenant`, and every other table carries a `tenantId` with a cascading foreign key. Natural keys include it: customers are unique per `(tenantId, psid)`, messages per `(tenantId, externalId)`, token usage per `(tenantId, day)`. Each tenant has one Facebook Page (`facebookPageId` is unique), which is how webhook events will be routed to a tenant. Page access tokens and platform API keys are stored only as AES-256-GCM ciphertext (`src/common/encryption.ts`, key from `ENCRYPTION_KEY`). Every query is scoped by tenant: product lookups filter on `tenantId` (a product ID from another shop returns `not_found`), conversations are loaded by `(id, tenantId)`, and the token budget is per tenant.
+Each business is a `Tenant`, and every other table carries a `tenantId` with a cascading foreign key. Natural keys include it: customers are unique per `(tenantId, psid)`, messages per `(tenantId, externalId)`, token usage per `(tenantId, day)`. Each tenant has one Facebook Page (`facebookPageId` is unique), which is how webhook events are routed to a tenant. Page access tokens and platform API keys are stored only as AES-256-GCM ciphertext (`src/common/encryption.ts`, key from `ENCRYPTION_KEY`). Every query is scoped by tenant: product lookups filter on `tenantId` (a product ID from another shop returns `not_found`), conversations are loaded by `(id, tenantId)`, and the token budget is per tenant.
 
 ### Cross-script Mongolian search
 
@@ -216,7 +232,10 @@ Timeline (from `git log`, times UTC+8):
 | Nov 2, 18:14   | `PlatformConnector` and the per-tenant connector registry                                                                                       |
 | Nov 2, 18:18   | Agent loop (system prompt, tool argument checks, grounding check, handoff, message history) and `POST /dev/chat`                                |
 | Nov 2, 18:24   | `pnpm agent:eval` with 16 Mongolian test conversations                                                                                          |
-| TODO           | Add later work (webhook, orders, payments) as it lands, and any work done outside this repository.                                              |
+| Nov 2, 18:45   | Messenger channel: signed webhook, per-customer queue, dedup, owner takeover from the Page inbox, auto-resume, Send API client                  |
+| Nov 2, 18:48   | Messenger tests: unit tests and an end-to-end webhook suite with a mocked Graph API                                                             |
+| Nov 2, 18:50   | `pnpm tenant:connect-page` to connect a Facebook Page to a tenant                                                                               |
+| TODO           | Add later work (orders, payments) as it lands, and any work done outside this repository.                                                       |
 
 ## Evaluation
 
@@ -257,30 +276,36 @@ An earlier run the same day passed 15 of 16. The agent's reply was correct ("duu
 ### Unit and end-to-end tests
 
 - `pnpm test`: unit tests (Vitest). No network or database needed.
-- `pnpm --filter @sonor/api test:e2e`: boots the app and calls `GET /health`. Needs `DATABASE_URL` set, but not a running database.
+- `pnpm --filter @sonor/api test:e2e`: boots the app. The health test only needs `DATABASE_URL` set. The Messenger suite needs the local Postgres running (`pnpm db:up`) and `ENCRYPTION_KEY`; it creates a throwaway tenant, posts signed webhooks, fakes the Graph API and the model, and deletes the tenant afterwards.
 - `pnpm model:smoke`: live check against the Meta Model API (needs `MODEL_API_KEY`, costs a few thousand tokens). It sends a short Mongolian message, then a message with a dummy `get_weather` tool, checks that the tool call parses, returns a fake result and checks the final answer. This also exercises encrypted reasoning replay.
 
-Latest results, run on 2026-11-02 at commit `bb8b9cb`: 170 of 170 unit tests and 1 of 1 end-to-end test pass.
+Latest results, run on 2026-11-02 at commit `0c502a7`: 209 of 209 unit tests and 15 of 15 end-to-end tests pass.
 
-| Suite                      | File                                              | Passed | What it checks                                                                                                                                                                                                               |
-| -------------------------- | ------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Agent turn                 | `src/agent/agent-turn.spec.ts`                    | 7/7    | Tool loop to a grounded answer, one regeneration with a correction (including a fresh tool lookup), fallback when still ungrounded, shop phone numbers allowed, 4-call limit, empty answer                                   |
-| Grounding check            | `src/agent/grounding.spec.ts`                     | 22/22  | Price formats (285,000₮, 285 000 төгрөг, 48 мянга, 48k, 1.2 сая), non-prices ignored (SPF50, 50 мл, 90%, sizes, times), invented, discounted and summed prices flagged                                                       |
-| Reply text                 | `src/agent/reply-text.spec.ts`                    | 12/12  | Markdown removed (bold, headings, lists, links, code, quotes), plain text and prices left alone                                                                                                                              |
-| Tool arguments             | `src/agent/tool-args.spec.ts`                     | 8/8    | Required fields, types, enums, numeric strings coerced, undeclared keys dropped                                                                                                                                              |
-| Message history            | `src/agent/history.spec.ts`                       | 2/2    | Stored customer, owner, agent and tool messages rebuilt in order; tool calls without results dropped                                                                                                                         |
-| System prompt              | `src/agent/agent.prompt.spec.ts`                  | 4/4    | Speaks as the shop and never names the model, script rule, business brief fenced as data, fallback reply offers a human                                                                                                      |
-| Product search             | `src/catalog/product-search.spec.ts`              | 19/19  | Cyrillic and Latin queries find the same demo products, suffixes and informal spellings, unsold items return nothing, category and price filters, options matched across scripts                                             |
-| Stock policy               | `src/catalog/stock-policy.spec.ts`                | 8/8    | Labels for 0, 1 to 3 and 4 or more, stock counts redacted at any depth in external data                                                                                                                                      |
-| PlatformConnector (HTTP)   | `src/catalog/platform/platform.connector.spec.ts` | 11/11  | Bearer auth, tool list validation and caps, 5-minute cache, POST with arguments, stock redaction, instruction-like text kept as data, unlisted tools refused, HTTP errors, non-JSON bodies, timeout, brief, missing settings |
-| Responses API mapping      | `src/model/meta/meta-responses.mapper.spec.ts`    | 10/10  | Stateless requests with encrypted reasoning, function tools, every message role, reasoning replay, tool-call parsing including malformed arguments, commentary kept out of replies, output-limit cut-offs, failed responses  |
-| Muse Spark provider (HTTP) | `src/model/meta/meta-model.provider.spec.ts`      | 13/13  | Bearer auth to `/v1/responses`, output cap, retries on 429 and 5xx with backoff and `Retry-After`, no retries on 400/401/402/504, timeouts, missing key, API key kept out of errors and logs                                 |
-| Model service              | `src/model/model.service.spec.ts`                 | 4/4    | Usage recorded per tenant, calls refused at the daily limit, logs counts but not prompts or replies, failures logged without recording usage                                                                                 |
-| Model config               | `src/model/model.config.spec.ts`                  | 8/8    | Defaults to Muse Spark 1.3, env overrides, rejects invalid values                                                                                                                                                            |
-| Cyrillic/Latin matching    | `src/common/mongolian-script.spec.ts`             | 33/33  | Cyrillic and informal Latin spellings reduce to the same key (including demo product names), digits kept and punctuation dropped, filler words removed, script detection on mixed messages                                   |
-| Encryption                 | `src/common/encryption.spec.ts`                   | 8/8    | Round trips (including Mongolian text), fresh IV per call, wrong key, tampered and malformed payloads, key parsing                                                                                                           |
-| Health                     | `src/health/health.controller.spec.ts`            | 1/1    | `/health` reports ok                                                                                                                                                                                                         |
-| Health, end to end         | `test/app.e2e-spec.ts`                            | 1/1    | `GET /health` on the running app                                                                                                                                                                                             |
+| Suite                         | File                                              | Passed | What it checks                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------- | ------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent turn                    | `src/agent/agent-turn.spec.ts`                    | 7/7    | Tool loop to a grounded answer, one regeneration with a correction (including a fresh tool lookup), fallback when still ungrounded, shop phone numbers allowed, 4-call limit, empty answer                                                                                                                                                                                                                                                  |
+| Grounding check               | `src/agent/grounding.spec.ts`                     | 22/22  | Price formats (285,000₮, 285 000 төгрөг, 48 мянга, 48k, 1.2 сая), non-prices ignored (SPF50, 50 мл, 90%, sizes, times), invented, discounted and summed prices flagged                                                                                                                                                                                                                                                                      |
+| Reply text                    | `src/agent/reply-text.spec.ts`                    | 12/12  | Markdown removed (bold, headings, lists, links, code, quotes), plain text and prices left alone                                                                                                                                                                                                                                                                                                                                             |
+| Tool arguments                | `src/agent/tool-args.spec.ts`                     | 8/8    | Required fields, types, enums, numeric strings coerced, undeclared keys dropped                                                                                                                                                                                                                                                                                                                                                             |
+| Message history               | `src/agent/history.spec.ts`                       | 2/2    | Stored customer, owner, agent and tool messages rebuilt in order; tool calls without results dropped                                                                                                                                                                                                                                                                                                                                        |
+| System prompt                 | `src/agent/agent.prompt.spec.ts`                  | 4/4    | Speaks as the shop and never names the model, script rule, business brief fenced as data, fallback reply offers a human                                                                                                                                                                                                                                                                                                                     |
+| Product search                | `src/catalog/product-search.spec.ts`              | 19/19  | Cyrillic and Latin queries find the same demo products, suffixes and informal spellings, unsold items return nothing, category and price filters, options matched across scripts                                                                                                                                                                                                                                                            |
+| Stock policy                  | `src/catalog/stock-policy.spec.ts`                | 8/8    | Labels for 0, 1 to 3 and 4 or more, stock counts redacted at any depth in external data                                                                                                                                                                                                                                                                                                                                                     |
+| Messenger webhook, end to end | `test/messenger.e2e-spec.ts`                      | 14/14  | Verify handshake (right token, wrong token, wrong mode), signature rejected when missing, wrong or stale, escaped-Unicode body accepted, mark_seen and typing_on before the reply, retried delivery answered once, one customer's messages answered in order, owner echo pauses the bot and later messages get no reply, own echoes ignored, auto-resume after `BOT_PAUSE_HOURS`, attachments get the text-only note, unknown Pages ignored |
+| Graph API client              | `src/messenger/graph.client.spec.ts`              | 13/13  | `/v26.0/me/messages` with the Page token and `appsecret_proof`, our metadata tag, 2000-character split, sender actions on their own, one retry on 5xx, rate limits, `is_transient` and network errors, no retry on 100/190/551, token kept out of errors and logs, Page lookup and webhook subscription                                                                                                                                     |
+| Webhook signature             | `src/messenger/signature.spec.ts`                 | 11/11  | Valid signature, wrong secret, tampered body, raw bytes vs re-serialized JSON, missing, empty, sha1-format, short and non-hex headers, no secret configured                                                                                                                                                                                                                                                                                 |
+| Webhook parsing               | `src/messenger/messenger.events.spec.ts`          | 6/6    | Text, attachments and stickers, echoes (customer is the recipient), postbacks, skipped deliveries and reads, several entries per delivery                                                                                                                                                                                                                                                                                                   |
+| Message splitting             | `src/messenger/message-split.spec.ts`             | 5/5    | Short replies kept whole, paragraph and sentence breaks preferred, every part within 2000 characters, hard split as a last resort                                                                                                                                                                                                                                                                                                           |
+| Per-customer queue            | `src/messenger/serial-queue.spec.ts`              | 4/4    | One customer's tasks in order, different customers in parallel, a failure doesn't block the next task                                                                                                                                                                                                                                                                                                                                       |
+| PlatformConnector (HTTP)      | `src/catalog/platform/platform.connector.spec.ts` | 11/11  | Bearer auth, tool list validation and caps, 5-minute cache, POST with arguments, stock redaction, instruction-like text kept as data, unlisted tools refused, HTTP errors, non-JSON bodies, timeout, brief, missing settings                                                                                                                                                                                                                |
+| Responses API mapping         | `src/model/meta/meta-responses.mapper.spec.ts`    | 10/10  | Stateless requests with encrypted reasoning, function tools, every message role, reasoning replay, tool-call parsing including malformed arguments, commentary kept out of replies, output-limit cut-offs, failed responses                                                                                                                                                                                                                 |
+| Muse Spark provider (HTTP)    | `src/model/meta/meta-model.provider.spec.ts`      | 13/13  | Bearer auth to `/v1/responses`, output cap, retries on 429 and 5xx with backoff and `Retry-After`, no retries on 400/401/402/504, timeouts, missing key, API key kept out of errors and logs                                                                                                                                                                                                                                                |
+| Model service                 | `src/model/model.service.spec.ts`                 | 4/4    | Usage recorded per tenant, calls refused at the daily limit, logs counts but not prompts or replies, failures logged without recording usage                                                                                                                                                                                                                                                                                                |
+| Model config                  | `src/model/model.config.spec.ts`                  | 8/8    | Defaults to Muse Spark 1.3, env overrides, rejects invalid values                                                                                                                                                                                                                                                                                                                                                                           |
+| Cyrillic/Latin matching       | `src/common/mongolian-script.spec.ts`             | 33/33  | Cyrillic and informal Latin spellings reduce to the same key (including demo product names), digits kept and punctuation dropped, filler words removed, script detection on mixed messages                                                                                                                                                                                                                                                  |
+| Encryption                    | `src/common/encryption.spec.ts`                   | 8/8    | Round trips (including Mongolian text), fresh IV per call, wrong key, tampered and malformed payloads, key parsing                                                                                                                                                                                                                                                                                                                          |
+| Health                        | `src/health/health.controller.spec.ts`            | 1/1    | `/health` reports ok                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Health, end to end            | `test/app.e2e-spec.ts`                            | 1/1    | `GET /health` on the running app                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ## Running it locally
 
@@ -353,8 +378,13 @@ All of them are listed in `.env.example`. Never commit `.env`.
 | `MODEL_REASONING_EFFORT`                            | `minimal`, `low`, `medium`, `high`, `xhigh` or `max`                               |
 | `DAILY_TOKEN_LIMIT`                                 | Model tokens per tenant per UTC day                                                |
 | `PLATFORM_TIMEOUT_MS`                               | Timeout per request to a PLATFORM tenant's integration API (default 8000)          |
+| `MESSENGER_VERIFY_TOKEN`                            | Any random string; must match the Verify Token in the Meta app's webhook settings  |
+| `MESSENGER_APP_SECRET`                              | The Meta app's App Secret. Checks webhook signatures and signs Graph API calls     |
+| `MESSENGER_APP_ID`                                  | Optional. The Meta app's ID, to recognize echoes of Sonor's own replies            |
+| `GRAPH_API_VERSION`                                 | Graph API version for the Send API (default `v26.0`)                               |
+| `BOT_PAUSE_HOURS`                                   | Hours the bot stays silent after the owner replies or a handoff (default 12)       |
 
-TODO: add the Messenger webhook variables when the webhook lands.
+Page access tokens aren't environment variables: each tenant's token is stored encrypted on its `Tenant` row by `pnpm tenant:connect-page`.
 
 ### Migrate and seed
 
@@ -380,13 +410,71 @@ curl -s localhost:3000/dev/chat -H 'Content-Type: application/json' -d '{"tenant
 
 The response contains `reply` (null when the conversation is paused for a human), `paused`, `handoff`, `toolCalls` (each tool's name, arguments and the output the model saw), `usage` (tokens and model calls), `regenerated` (whether the grounding check asked for a second try), `fallback` (`none`, or why the safe reply was used) and `conversationId`.
 
-After a handoff the conversation stays paused, and there's no way to resume it yet. Use a new `customerRef` to start over.
+After a handoff, or once the owner replies by hand on Messenger, the conversation stays paused for `BOT_PAUSE_HOURS`. To resume it right away (development only):
 
-### Connect a Messenger Page (planned)
+```bash
+curl -s -X POST localhost:3000/dev/conversations/<conversationId>/resume
+```
 
-Planned: the webhook isn't built yet, so a Page can't be connected. Each tenant already stores a `facebookPageId` and an encrypted Page access token; the seed uses placeholders for both.
+### Connect a Messenger Page
 
-TODO: add the steps: Meta app setup, webhook URL and verify token, Page subscription, and storing the Page access token for a tenant.
+You need a Meta developer account and a Facebook Page you manage; a test Page is fine.
+
+1. **Create the app.** In the [Meta App Dashboard](https://developers.facebook.com/apps), create an app with the use case **Engage with customers on Messenger from Meta**. It adds the permissions Sonor needs, including `pages_messaging` and `pages_manage_metadata`.
+2. **Set the secrets.** Copy the App ID and App Secret (**App settings > Basic**) into `.env` as `MESSENGER_APP_ID` and `MESSENGER_APP_SECRET`. Set `MESSENGER_VERIFY_TOKEN` to a random string:
+
+   ```bash
+   openssl rand -hex 16
+   ```
+
+3. **Expose the API over HTTPS.** Meta only calls HTTPS URLs. For local testing, use a tunnel (see [Test end to end through a tunnel](#test-end-to-end-through-a-tunnel)).
+4. **Configure the webhook.** In the use case's **Messenger API Setup > Configure webhooks**, set the Callback URL to `https://<your-host>/webhooks/messenger` and the Verify token to your `MESSENGER_VERIFY_TOKEN`, then **Verify and save**. Sonor answers the handshake.
+5. **Connect the Page and get its token.** Under **Generate access tokens**, click **Connect**, pick your Page, then generate the Page access token and copy it.
+6. **Store the token on a tenant.** This checks the token with the Graph API (it must belong to the Page ID you give), stores the Page ID and the encrypted token, and never prints the token. Paste the token at the prompt, which doesn't echo it, or set `PAGE_ACCESS_TOKEN`:
+
+   ```bash
+   pnpm tenant:connect-page --tenant salkhin-deel --page-id <PAGE_ID>
+   ```
+
+7. **Subscribe to webhook fields.** Subscribe the Page to `messages`, `messaging_postbacks` and `message_echoes`: either **Add subscriptions** under **Generate access tokens**, or add `--subscribe` to the command in step 6.
+8. **Add testers.** While the app is unpublished, Sonor answers only people with a role on the app. Add them under **App roles > Roles** (as Testers, for example), and have them accept the invitation. App Review is only needed before the bot answers the public.
+
+Optional: turn on **Require App Secret** in the app's advanced settings. Sonor already sends `appsecret_proof` with every Graph API call.
+
+### Test end to end through a tunnel
+
+1. Start Postgres and the API, with the Messenger variables and `MODEL_API_KEY` set in `.env`:
+
+   ```bash
+   pnpm db:up
+   ```
+
+   ```bash
+   pnpm dev
+   ```
+
+2. In another terminal, open a tunnel to port 3000 with cloudflared or ngrok, and copy the `https://` URL it prints:
+
+   ```bash
+   cloudflared tunnel --url http://localhost:3000
+   ```
+
+   ```bash
+   ngrok http 3000
+   ```
+
+3. Check the handshake through the tunnel. It should print `42`:
+
+   ```bash
+   curl "https://<tunnel-host>/webhooks/messenger?hub.mode=subscribe&hub.verify_token=<MESSENGER_VERIFY_TOKEN>&hub.challenge=42"
+   ```
+
+4. Set `https://<tunnel-host>/webhooks/messenger` as the Callback URL (step 4 above). Quick tunnels get a new URL each time they start, so update the Callback URL whenever you restart the tunnel.
+5. From a tester's Facebook account, message the Page in Messenger, for example `nooluuran malgai baigaa yu?`. The API log shows the webhook and the model call; in Messenger you should see the message marked seen, a typing indicator, then the reply.
+6. Reply by hand from the Page inbox (Meta Business Suite). The API logs `owner replied, bot paused`, and the bot stays silent in that chat. Resume it with the dev endpoint above, or wait `BOT_PAUSE_HOURS`.
+7. Send a photo or a sticker. The bot answers that it reads text for now.
+
+If nothing arrives, check that the Page is subscribed (step 7 above) and that the tester has accepted their role. If the API answers `403`, the `MESSENGER_APP_SECRET` doesn't match the app's.
 
 ### Scripts
 
@@ -405,13 +493,16 @@ TODO: add the steps: Meta app setup, webhook URL and verify token, Page subscrip
 | `pnpm db:studio`               | Browse data in Prisma Studio                                           |
 | `pnpm model:smoke`             | Live check of the model API (needs `MODEL_API_KEY`)                    |
 | `pnpm agent:eval`              | Agent eval against the demo shops (needs `MODEL_API_KEY`, about $0.10) |
+| `pnpm tenant:connect-page`     | Store a Facebook Page ID and encrypted Page access token on a tenant   |
 
 ## Limitations and next steps
 
 Limitations today:
 
-- No Messenger yet. The webhook and replies through the Send API are planned, so the agent is reachable only through `/dev/chat` and the eval.
-- After a handoff the bot stays paused. The owner isn't notified, and there's no way to resume the bot yet.
+- The Messenger channel is tested against a mocked Graph API, but hasn't yet run with a real Page.
+- After a handoff the owner isn't notified; they see the chat in the Page inbox. The bot resumes after `BOT_PAUSE_HOURS`, or through a development-only endpoint; there's no owner-facing control yet.
+- The per-customer message queue is in memory, so it only keeps replies in order on a single API instance.
+- Photos, voice messages and stickers get a "text only for now" reply; the agent doesn't read them yet.
 - No orders or payments. The schema models orders and QPay invoices (`PaymentLink`), but there's no order tool or payment integration.
 - `PlatformConnector` is tested only against a mocked HTTP layer.
 - History is the last 30 messages, not a token budget. The Meta Model API doesn't truncate context.
@@ -425,11 +516,12 @@ Limitations today:
 
 Next steps:
 
-1. Messenger webhook, and replies through the Send API.
+1. Run the Messenger channel with a real Page (see [Test end to end through a tunnel](#test-end-to-end-through-a-tunnel)) and deploy.
 2. Notify the owner on handoff, and let them resume the bot.
 3. Order drafts with server-side totals, then QPay payment links.
-4. Run `PlatformConnector` against the author's platform.
-5. History trimming by token count.
+4. Voice messages through Muse Voice Transcribe, and product photos through Muse Spark's image input.
+5. Run `PlatformConnector` against the author's platform.
+6. History trimming by token count.
 
 ## License
 
