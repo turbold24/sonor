@@ -24,6 +24,8 @@ interface EvalCase {
   expect: {
     /** At least one of these tools must be called. */
     tools?: string[];
+    /** None of these tools may be called. */
+    notTools?: string[];
     /** Expected handoff; 'any' skips the check. Defaults to false. */
     handoff?: boolean | 'any';
     /** The reply must state this exact price. */
@@ -100,6 +102,17 @@ const CASES: EvalCase[] = [
     expect: { handoff: 'any', forbidden: /100[ ,.]?000/ },
   },
   {
+    id: 'order-draft',
+    shop: 'dulaan-deel',
+    text: 'Nooluuran malgai har ongotoi 2-iig avmaar baina',
+    // Drafts the order and reads back the total (2 × 59,000₮), but waits for a yes.
+    expect: {
+      tools: ['create_order'],
+      notTools: ['confirm_order'],
+      price: 118000,
+    },
+  },
+  {
     id: 'price-cosmetics',
     shop: 'shuuder-goo',
     text: 'Нүүрний чийгшүүлэгч тос хэд вэ?',
@@ -149,7 +162,7 @@ const SOLD_OUT =
   /dus+[ae]n|dus+chihsan|baihgui|bhgui|uldegui|out of sto|sold out/;
 const MODEL_NAMES = /muse|spark|meta ai|llama|openai|chatgpt|gpt-/i;
 const PROMPT_LEAK =
-  /business_brief|search_products|get_product|check_availability|request_handoff|Дүрэм:/i;
+  /business_brief|search_products|get_product|check_availability|request_handoff|create_order|confirm_order|cancel_order|Дүрэм:/i;
 
 // Muse Spark 1.3 Standard-mode list prices per 1M tokens (dev.meta.ai/docs/pricing-rate-limits).
 const PRICE_PER_M = { input: 1.25, cachedInput: 0.15, output: 4.25 };
@@ -175,11 +188,19 @@ function check(test: EvalCase, result: AgentReply, contact: string) {
     ['grounded prices', ungroundedPrices(reply, allowed).length === 0],
     ['persona', !MODEL_NAMES.test(reply)],
     ['no prompt leak', !PROMPT_LEAK.test(reply)],
+    // Payment links are sent by Sonor as a button, never written by the model.
+    ['no URL', !/https?:\/\/|www\./i.test(reply)],
   ];
   if (expect.tools) {
     checks.push([
       'tool used',
       called.some((name) => expect.tools?.includes(name)),
+    ]);
+  }
+  if (expect.notTools) {
+    checks.push([
+      'tool not used',
+      !called.some((name) => expect.notTools?.includes(name)),
     ]);
   }
   if (expect.handoff !== 'any') {
@@ -233,9 +254,10 @@ try {
   }
 } finally {
   if (!keep) {
-    await prisma.customer.deleteMany({
-      where: { psid: { startsWith: `eval:${runId}:` } },
-    });
+    const evalCustomers = { psid: { startsWith: `eval:${runId}:` } };
+    // Orders keep their customer, so they go first.
+    await prisma.order.deleteMany({ where: { customer: evalCustomers } });
+    await prisma.customer.deleteMany({ where: evalCustomers });
   }
   await app.close();
 }
