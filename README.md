@@ -45,16 +45,16 @@ To try it yourself, see [Chat with the agent locally](#chat-with-the-agent-local
 | --------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | Muse Spark 1.3 (`muse-spark-1.3`) | The agent's model: reads the conversation, decides which tools to call, writes the reply in Mongolian | Implemented and tested: model layer, agent loop, live eval |
 
-Sonor uses no other Meta models. TODO: add a row here if you add one before submission.
+Sonor uses no other Meta models yet. Voice messages (Muse Voice Transcribe) and product photos (Muse Spark's image input) are next steps.
 
 How Sonor calls Muse Spark (`apps/api/src/model/meta`):
 
-- **Endpoint.** The Responses API, `POST https://api.meta.ai/v1/responses`, with a bearer API key.
+- **Endpoint.** The Responses API, `POST https://api.meta.ai/v1/responses`, with a bearer API key. The deployed API reaches it through a small relay (see [Deployment](#deployment)).
 - **Stateless.** Every request sets `store: false` and sends the full history. Requests ask for `reasoning.encrypted_content`, and Sonor sends those encrypted reasoning items back on the next turn (through `providerState`), so the model keeps its reasoning across tool calls without Meta storing the conversation.
 - **Tools.** Tools are sent as function tools with `strict: false`. The API doesn't guarantee that tool arguments match the schema, so `ToolCall.arguments` is the parsed JSON object or `null`, never trusted as-is.
 - **Messages.** The system prompt goes in the `developer` role. Text the model writes right before a tool call is tagged `commentary` and kept out of the reply.
 - **Output limits.** `max_output_tokens` includes reasoning tokens. A response cut off by the limit is reported as `finishReason: 'length'`, and a half-written tool call is dropped.
-- **Per reply.** The agent makes at most 4 calls at `reasoning.effort: "low"`, and sets `safety_identifier` to a hash of the tenant and customer IDs, so Meta can attribute abuse to one end user without seeing who they are.
+- **Per reply.** The agent makes at most 4 rounds of tool calls and one more call to answer, at `reasoning.effort: "low"`, and sets `safety_identifier` to a hash of the tenant and customer IDs, so Meta can attribute abuse to one end user without seeing who they are.
 - **Images.** The request mapping supports `input_image` items. No feature sends images yet.
 
 Agent code depends only on `model.types.ts`. `MODEL_PROVIDER` and `MODEL_ID` select the implementation; `meta` is the only provider.
@@ -237,9 +237,7 @@ Implemented and tested:
 
 ## What was built during the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026)
 
-**Everything in this repository was written during the hackathon.** The first commit is `5fb954f` on 2026-11-02 at 12:11 (UTC+8). The latest commit when this README was written is from 2026-11-02. You can check with `git log --reverse --date=iso`.
-
-TODO: update the latest commit date before submission.
+**Everything in this repository was written during the hackathon.** The first commit is `5fb954f` on 2026-11-02 at 12:11 (UTC+8). `git log --reverse --date=iso` lists every commit with its date.
 
 **Pre-existing, not in this repository:** the author's private multi-tenant platform and its website chatbot. None of their code is here. Sonor's `PlatformConnector` reaches the platform only through its HTTP integration API.
 
@@ -258,7 +256,7 @@ Timeline (from `git log`, times UTC+8):
 
 | When           | Work                                                                                                                                              |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Oct 26 – Nov 1 | TODO: add work done outside this repository.                                                                                                      |
+| Oct 26 – Nov 1 | Planning, research and setup (Meta developer and Model API accounts); no code                                                                     |
 | Nov 2, 12:11   | Repository setup: pnpm workspace, ESLint and Prettier, NestJS app with `/health`, Docker Compose Postgres, first README                           |
 | Nov 2, 12:31   | Prisma 7 with PostgreSQL, data model and first migration, AES-256-GCM helper for secrets, seed with two fictional shops                           |
 | Nov 2, 13:26   | Model layer: provider-neutral interface, Muse Spark provider on the Responses API, per-tenant daily token limit, unit tests, `pnpm model:smoke`   |
@@ -279,7 +277,6 @@ Timeline (from `git log`, times UTC+8):
 | Nov 3, 18:29   | Deployed on Railway (US East): Dockerfile with migrations on start, managed Postgres, production webhook for the test Page                        |
 | Nov 3, 19:02   | Bot disclosure on first replies, after a lapse and after an owner takeover                                                                        |
 | Nov 3, 19:30   | Model relay on Vercel: the Model API serves no models to Railway's network                                                                        |
-| TODO           | Add later work as it lands, and any work done outside this repository.                                                                            |
 
 ## Evaluation
 
@@ -627,4 +624,4 @@ Next steps:
 
 ## License
 
-TODO: add a LICENSE file. `package.json` currently says `"license": "UNLICENSED"`.
+MIT. See [LICENSE](LICENSE).

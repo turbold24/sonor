@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "Sonor API: Messenger webhook, agent and connectors",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "postinstall": "prisma generate",

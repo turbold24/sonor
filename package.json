@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "Mongolian-language AI sales agent for small businesses on Facebook Messenger",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@11.22.0",
   "engines": {

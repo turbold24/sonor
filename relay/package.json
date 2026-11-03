@@ -3,6 +3,6 @@
   "version": "0.0.1",
   "description": "Forwards Sonor's Meta Model API calls from Vercel's network",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module"
 }
