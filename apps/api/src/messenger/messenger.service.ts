@@ -1,9 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AgentService } from '../agent/agent.service.js';
+import { AgentService, type AgentReply } from '../agent/agent.service.js';
 import { ConversationService } from '../agent/conversation.service.js';
 import { decryptSecret, parseEncryptionKey } from '../common/encryption.js';
+import { detectScript, type Script } from '../common/mongolian-script.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import {
+  paymentButtonText,
+  paymentButtonTitle,
+} from '../orders/order-messages.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   GraphClient,
@@ -21,6 +26,8 @@ import { SerialQueue } from './serial-queue.js';
 
 // Messenger shows "typing…" for about 20 seconds; refresh it while the agent works.
 const TYPING_REFRESH_MS = 15_000;
+// /dev/chat customers; they have no real Messenger PSID to send to.
+const DEV_PSID_PREFIX = 'dev:';
 
 @Injectable()
 export class MessengerService {
@@ -111,20 +118,73 @@ export class MessengerService {
       TYPING_REFRESH_MS,
     );
 
-    let reply: string | null;
+    let result: AgentReply;
     try {
-      reply = (await this.agent.respond(tenant.id, conversation.id, event.text))
-        .reply;
+      result = await this.agent.respond(tenant.id, conversation.id, event.text);
     } finally {
       clearInterval(typing);
     }
-    if (!reply) return;
+    if (!result.reply) return;
 
     try {
-      await this.graph.sendText(token, event.psid, reply);
+      await this.graph.sendText(token, event.psid, result.reply);
+      const link = result.paymentLink;
+      if (link) {
+        // Sent by Sonor, not written by the model, so the URL is always exact.
+        const script = detectScript(event.text);
+        await this.graph.sendUrlButtons(
+          token,
+          event.psid,
+          paymentButtonText(script, link.orderCode, link.total),
+          [{ url: link.url, title: paymentButtonTitle(script) }],
+        );
+      }
     } catch (error) {
       this.logger.error(
         `reply not delivered tenant=${tenant.id} conversation=${conversation.id}: ${describe(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Sends the customer a message Sonor wrote itself (not a reply to their message), in
+   * the script they last wrote in, and saves it to the conversation.
+   */
+  async notifyCustomer(
+    tenantId: string,
+    conversationId: string,
+    textFor: (script: Script) => string,
+  ): Promise<void> {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+      include: {
+        tenant: true,
+        customer: { select: { psid: true } },
+        messages: {
+          where: { role: 'CUSTOMER', text: { not: null } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { text: true },
+        },
+      },
+    });
+    if (!conversation) return;
+    const text = textFor(detectScript(conversation.messages[0]?.text ?? ''));
+    await this.prisma.message.create({
+      data: { tenantId, conversationId, role: 'AGENT', text },
+    });
+
+    const { psid } = conversation.customer;
+    if (psid.startsWith(DEV_PSID_PREFIX)) return;
+    try {
+      const token = decryptSecret(
+        conversation.tenant.pageAccessTokenEncrypted,
+        parseEncryptionKey(this.config.get<string>('ENCRYPTION_KEY')),
+      );
+      await this.graph.sendText(token, psid, text, 'UPDATE');
+    } catch (error) {
+      this.logger.error(
+        `notice not delivered tenant=${tenantId} conversation=${conversationId}: ${describe(error)}`,
       );
     }
   }

@@ -73,6 +73,43 @@ describe('GraphClient', () => {
     });
   });
 
+  it('sends a proactive message as UPDATE', async () => {
+    const { client, calls } = setup(json({ message_id: 'mid.1' }));
+    await client.sendText(TOKEN, PSID, 'Төлбөр амжилттай', 'UPDATE');
+    expect(calls()[0].body).toMatchObject({ messaging_type: 'UPDATE' });
+  });
+
+  it('sends URL buttons as a button template within Meta’s limits', async () => {
+    const { client, calls } = setup(json({ message_id: 'mid.1' }));
+
+    await client.sendUrlButtons(TOKEN, PSID, 'x'.repeat(700), [
+      { url: 'https://sonor.test/pay/abc', title: 'Төлбөр төлөх, одоо шууд' },
+    ]);
+
+    expect(calls()[0].body).toEqual({
+      recipient: { id: PSID },
+      messaging_type: 'RESPONSE',
+      message: {
+        attachment: {
+          type: 'template',
+          payload: {
+            template_type: 'button',
+            text: 'x'.repeat(640),
+            buttons: [
+              {
+                type: 'web_url',
+                url: 'https://sonor.test/pay/abc',
+                title: 'Төлбөр төлөх, одоо шууд'.slice(0, 20),
+                webview_share_button: 'hide',
+              },
+            ],
+          },
+        },
+        metadata: OWN_MESSAGE_METADATA,
+      },
+    });
+  });
+
   it('splits replies over 2000 characters into several messages', async () => {
     const { client, calls } = setup(
       json({ message_id: 'mid.1' }),

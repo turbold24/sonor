@@ -19,6 +19,17 @@ export const OWN_MESSAGE_METADATA = 'sonor';
 
 export type SenderAction = 'mark_seen' | 'typing_on' | 'typing_off';
 
+export type MessagingType = 'RESPONSE' | 'UPDATE';
+
+export interface UrlButton {
+  url: string;
+  /** At most 20 characters. */
+  title: string;
+}
+
+const BUTTON_TEXT_LIMIT = 640;
+const BUTTON_TITLE_LIMIT = 20;
+
 export class GraphError extends Error {
   constructor(
     message: string,
@@ -87,17 +98,21 @@ export class GraphClient {
     });
   }
 
-  /** Sends a reply, split into parts of at most 2000 characters. Returns message IDs. */
+  /**
+   * Sends text, split into parts of at most 2000 characters. RESPONSE answers a message;
+   * UPDATE is a proactive message, e.g. after a payment. Both need the 24-hour window.
+   */
   async sendText(
     pageToken: string,
     psid: string,
     text: string,
+    messagingType: MessagingType = 'RESPONSE',
   ): Promise<string[]> {
     const ids: string[] = [];
     for (const part of splitMessage(text)) {
       const response = await this.request('POST', '/me/messages', pageToken, {
         recipient: { id: psid },
-        messaging_type: 'RESPONSE',
+        messaging_type: messagingType,
         message: { text: part, metadata: OWN_MESSAGE_METADATA },
       });
       if (typeof response.message_id === 'string') {
@@ -105,6 +120,37 @@ export class GraphClient {
       }
     }
     return ids;
+  }
+
+  /** A button template: up to 640 characters of text and 1-3 URL buttons. */
+  async sendUrlButtons(
+    pageToken: string,
+    psid: string,
+    text: string,
+    buttons: UrlButton[],
+    messagingType: MessagingType = 'RESPONSE',
+  ): Promise<void> {
+    await this.request('POST', '/me/messages', pageToken, {
+      recipient: { id: psid },
+      messaging_type: messagingType,
+      message: {
+        attachment: {
+          type: 'template',
+          payload: {
+            template_type: 'button',
+            text: text.slice(0, BUTTON_TEXT_LIMIT),
+            buttons: buttons.slice(0, 3).map((button) => ({
+              type: 'web_url',
+              url: button.url,
+              title: button.title.slice(0, BUTTON_TITLE_LIMIT),
+              // The page may show order details; hide the webview's share button.
+              webview_share_button: 'hide',
+            })),
+          },
+        },
+        metadata: OWN_MESSAGE_METADATA,
+      },
+    });
   }
 
   /**
