@@ -82,6 +82,12 @@ model Tenant {
   /// Shown to the customer when the agent hands the chat to a human.
   agentHandoffContact String?
 
+  /// The owner's Messenger PSID for alerts, linked by sending a one-time code to the Page.
+  ownerPsid           String?
+  /// SHA-256 of the one-time owner link code, and when it stops working.
+  ownerLinkCodeHash   String?
+  ownerLinkExpiresAt  DateTime?
+
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
