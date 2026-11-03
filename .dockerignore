@@ -11,5 +11,6 @@
 !apps/api/tsconfig.build.json
 !apps/api/prisma
 !apps/api/src
+!apps/api/scripts
 apps/api/src/generated
 **/*.spec.ts
