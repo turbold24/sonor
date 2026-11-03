@@ -4,7 +4,7 @@ A Mongolian-language AI sales agent for small businesses on Facebook Messenger, 
 
 **Demo video:** TODO: add the demo video link.
 
-> **Status, 3 Nov 2026.** Implemented and tested: the multi-tenant data model, two fictional demo shops, the Muse Spark model layer (tool calling, encrypted reasoning replay, retries, per-tenant daily token budget), Cyrillic/Latin product search, the data connectors, the agent loop with a price grounding check and a stock policy, handoff to a human (the bot pauses itself), the Facebook Messenger channel (signed webhook, Send API replies, owner takeover from the Page inbox), ordering (order drafts priced on the server, confirmation, a Messenger payment button and a demo checkout page), owner alerts on Messenger (handoffs and paid orders, with a `/resume` command), a local `/dev/chat` endpoint and the `pnpm agent:eval` suite. The Messenger channel, ordering and owner alerts have run on a real test Page through a tunnel; the checkout is a demo where no money moves. **Planned**, not in the repository yet: a real payment provider (QPay). The `PlatformConnector` is tested only against a mocked HTTP layer, not the real platform. Each section below says which parts exist.
+> **Status, 3 Nov 2026.** Implemented and tested: the multi-tenant data model, two fictional demo shops, the Muse Spark model layer (tool calling, encrypted reasoning replay, retries, per-tenant daily token budget), Cyrillic/Latin product search, the data connectors, the agent loop with a price grounding check and a stock policy, handoff to a human (the bot pauses itself), the Facebook Messenger channel (signed webhook, Send API replies, owner takeover from the Page inbox), ordering (order drafts priced on the server, confirmation, a Messenger payment button and a demo checkout page), owner alerts on Messenger (handoffs and paid orders, with a `/resume` command), a local `/dev/chat` endpoint and the `pnpm agent:eval` suite. Sonor is deployed on Railway and answers a real test Page (Дулаан Дээл) on Messenger; ordering and owner alerts have run there too. The checkout is a demo where no money moves. **Planned**, not in the repository yet: a real payment provider (QPay). The `PlatformConnector` is tested only against a mocked HTTP layer, not the real platform. Each section below says which parts exist.
 
 ## The problem
 
@@ -273,6 +273,7 @@ Timeline (from `git log`, times UTC+8):
 | Nov 3, 17:58   | Orders: checkout schema, `create_order` / `confirm_order` / `cancel_order` with server-side pricing, demo checkout page, Messenger payment button |
 | Nov 3, 18:00   | Tool loop: one answer call after the last tool round, so a long order turn no longer ends in the fallback                                         |
 | Nov 3, 18:14   | Owner alerts on Messenger: one-time link code, handoff and paid-order alerts, `/resume` and `/help` commands, `pnpm tenant:owner-code`            |
+| Nov 3, 18:29   | Deployed on Railway (US East): Dockerfile with migrations on start, managed Postgres, production webhook for the test Page                        |
 | TODO           | Add later work as it lands, and any work done outside this repository.                                                                            |
 
 ## Evaluation
@@ -547,11 +548,43 @@ If nothing arrives, check that the Page is subscribed (step 7 above) and that th
 | `pnpm tenant:connect-page`     | Store a Facebook Page ID and encrypted Page access token on a tenant      |
 | `pnpm tenant:owner-code`       | Print a one-time code that links the owner's Messenger account for alerts |
 
+## Deployment
+
+The API runs on [Railway](https://railway.com) at `https://sonor-api-production.up.railway.app` (`/health` answers `{"status":"ok"}`), with Railway's managed PostgreSQL, both in the US East region. It's the webhook for the Дулаан Дээл test Page. The Meta app is unpublished, so the bot answers only people with a role on the app.
+
+- **Image.** The root `Dockerfile` installs the workspace, builds the API and, on start, runs `prisma migrate deploy` before serving. `.dockerignore` is an allowlist, so `.env` files never reach the image.
+- **One instance.** The per-customer message queue is in memory, so the service runs a single replica.
+- **Configuration.** The variables from `.env.example`, set on the Railway service, with `NODE_ENV=production` (no `/dev` routes), `DATABASE_URL` referencing the Railway Postgres, and `PUBLIC_BASE_URL` set to the service's domain for payment links. Secrets were set from stdin, never on a command line.
+- **Region.** From Railway's Singapore region, the Meta Model API answered `404 model_not_found` for `muse-spark-1.3`, while the same key worked from Mongolia and from US East. Model API availability depends on where requests come from ([supported countries](https://dev.meta.ai/help/accounts-and-login/supported-countries)), so both services run in US East.
+- **Data.** The demo shops were seeded inside the container, and the test Page's ID, its encrypted token and the owner link were copied from the local database; the token was never decrypted outside the service.
+
+To deploy a change, with the Railway CLI linked to the project:
+
+```bash
+railway up --service sonor-api
+```
+
+The admin scripts are in the image. Open a shell in the running service with `railway ssh --service sonor-api`, then, from `/app/apps/api`:
+
+```bash
+node_modules/.bin/tsx prisma/seed.ts
+```
+
+```bash
+node_modules/.bin/tsx scripts/connect-page.ts --tenant dulaan-deel --page-id <PAGE_ID>
+```
+
+```bash
+node_modules/.bin/tsx scripts/owner-code.ts --tenant dulaan-deel
+```
+
+After deploying somewhere new, set the Meta app's Callback URL to `https://<domain>/webhooks/messenger` (see [Connect a Messenger Page](#connect-a-messenger-page)).
+
 ## Limitations and next steps
 
 Limitations today:
 
-- The Messenger channel has run with one real test Page through a tunnel, not yet on a deployed server.
+- The Meta app is unpublished, so the bot answers only people with a role on the app; answering the public needs App Review.
 - Owner alerts reach the owner only within 24 hours of their last message to the Page (Messenger's standard messaging window). The bot resumes after `BOT_PAUSE_HOURS` or with the owner's `/resume` command.
 - The per-customer message queue is in memory, so it only keeps replies in order on a single API instance.
 - Photos, voice messages and stickers get a "text only for now" reply; the agent doesn't read them yet.
@@ -570,7 +603,7 @@ Limitations today:
 
 Next steps:
 
-1. Deploy, so the webhook and payment links have a stable address.
+1. App Review, so the bot can answer the public.
 2. Owner alerts outside the 24-hour window (another channel, or an approved message tag), and an order list for the owner.
 3. QPay payment links in place of the demo checkout.
 4. Voice messages through Muse Voice Transcribe, and product photos through Muse Spark's image input.
