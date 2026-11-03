@@ -11,6 +11,11 @@ import {
   OWN_MESSAGE_METADATA,
 } from '../src/messenger/graph.client.js';
 import { MessengerService } from '../src/messenger/messenger.service.js';
+import {
+  hashLinkCode,
+  linkedReply,
+  resumedReply,
+} from '../src/messenger/owner-messages.js';
 import { signBody } from '../src/messenger/signature.js';
 import { ModelService } from '../src/model/model.service.js';
 import type { ChatResult } from '../src/model/model.types.js';
@@ -36,6 +41,7 @@ interface GraphCall {
   url: URL;
   body: {
     recipient: { id: string };
+    messaging_type?: string;
     sender_action?: string;
     message?: { text: string; metadata?: string };
   };
@@ -416,5 +422,154 @@ describe('Messenger webhook (e2e)', () => {
 
     expect(graphCalls).toEqual([]);
     expect(await prisma.customer.count({ where: { psid } })).toBe(0);
+  });
+
+  describe('owner', () => {
+    const OWNER = 'psid-owner';
+    const CODE = 'SONOR-K3F9Q2';
+    const sentTo = (psid: string) =>
+      graphCalls.flatMap((call) =>
+        call.body.recipient.id === psid && call.body.message
+          ? [call.body.message.text]
+          : [],
+      );
+    const ownerOf = async () =>
+      (await prisma.tenant.findUniqueOrThrow({ where: { id: tenant.id } }))
+        .ownerPsid;
+
+    afterAll(() =>
+      prisma.tenant.update({
+        where: { id: tenant.id },
+        data: {
+          ownerPsid: null,
+          ownerLinkCodeHash: null,
+          ownerLinkExpiresAt: null,
+        },
+      }),
+    );
+
+    it('links the owner with a one-time code and refuses it afterwards', async () => {
+      await prisma.tenant.update({
+        where: { id: tenant.id },
+        data: {
+          ownerLinkCodeHash: hashLinkCode(CODE),
+          ownerLinkExpiresAt: new Date(Date.now() + 60_000),
+        },
+      });
+
+      await deliver(
+        payload(
+          tenant.facebookPageId,
+          fromCustomer(OWNER, { text: ' sonor-k3f9q2 ' }),
+        ),
+      );
+
+      expect(await ownerOf()).toBe(OWNER);
+      expect(sentTo(OWNER)).toEqual([linkedReply(tenant.name)]);
+      expect(modelChat).not.toHaveBeenCalled();
+      expect(await prisma.customer.count({ where: { psid: OWNER } })).toBe(0);
+
+      graphCalls.length = 0;
+      await deliver(
+        payload(
+          tenant.facebookPageId,
+          fromCustomer('psid-intruder', { text: CODE }),
+        ),
+      );
+      expect(await ownerOf()).toBe(OWNER);
+      expect(sentTo('psid-intruder')[0]).toContain('буруу');
+    });
+
+    it('alerts the owner when the bot hands a chat over, and /resume turns it back on', async () => {
+      const psid = uid('psid');
+      modelChat
+        .mockResolvedValueOnce({
+          text: null,
+          toolCalls: [
+            {
+              id: 'call_handoff',
+              name: 'request_handoff',
+              arguments: { reason: 'Asks about delivery' },
+              rawArguments: '{"reason":"Asks about delivery"}',
+            },
+          ],
+          finishReason: 'tool_calls',
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            cachedInputTokens: 0,
+            reasoningTokens: 0,
+          },
+          model: 'fake',
+        })
+        .mockResolvedValueOnce({
+          text: 'Манай менежер удахгүй хариулна.',
+          toolCalls: [],
+          finishReason: 'stop',
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            cachedInputTokens: 0,
+            reasoningTokens: 0,
+          },
+          model: 'fake',
+        });
+
+      await deliver(
+        payload(
+          tenant.facebookPageId,
+          fromCustomer(psid, { text: 'hurgelt hed honog ve?' }),
+        ),
+      );
+
+      const conversation = await conversationOf(psid);
+      const code = conversation.id.slice(-6).toUpperCase();
+      expect(conversation.botPaused).toBe(true);
+      expect(sentTo(psid)).toEqual(['Манай менежер удахгүй хариулна.']);
+      const alerts = graphCalls.filter(
+        (call) => call.body.recipient.id === OWNER,
+      );
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].body.messaging_type).toBe('UPDATE');
+      const alert = alerts[0].body.message?.text ?? '';
+      expect(alert).toContain(`чат #${code}`);
+      expect(alert).toContain('Шалтгаан: Asks about delivery');
+      expect(alert).toContain('"hurgelt hed honog ve?"');
+
+      graphCalls.length = 0;
+      await deliver(
+        payload(
+          tenant.facebookPageId,
+          fromCustomer(OWNER, { text: `/resume ${code.toLowerCase()}` }),
+        ),
+      );
+      expect((await conversationOf(psid)).botPaused).toBe(false);
+      expect(sentTo(OWNER)).toEqual([resumedReply(code, true)]);
+    });
+
+    it("answers the owner's ordinary messages like a customer's", async () => {
+      await deliver(
+        payload(
+          tenant.facebookPageId,
+          fromCustomer(OWNER, { text: 'deel bga yu?' }),
+        ),
+      );
+      expect(modelChat).toHaveBeenCalled();
+      expect(sentTo(OWNER)).toEqual([REPLY]);
+    });
+
+    it('treats commands from anyone else as ordinary messages', async () => {
+      const psid = uid('psid');
+      await deliver(
+        payload(
+          tenant.facebookPageId,
+          fromCustomer(psid, { text: '/resume ABC123' }),
+        ),
+      );
+      expect(modelChat).toHaveBeenCalled();
+      expect(sentTo(psid)).toEqual([REPLY]);
+    });
   });
 });

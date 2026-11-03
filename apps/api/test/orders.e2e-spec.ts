@@ -250,7 +250,11 @@ describe('Orders and checkout (e2e)', () => {
     expect(invalid.status).toBe(422);
     expect((await openOrder(PSID)).status).toBe('CONFIRMED');
 
-    // Payment: order paid, stock down, customer told in Messenger.
+    // Payment: order paid, stock down, customer told in Messenger, owner alerted.
+    await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: { ownerPsid: 'psid-orders-owner' },
+    });
     graph.length = 0;
     const paid = await pay(token, {
       phone: '9911 2233',
@@ -273,12 +277,20 @@ describe('Orders and checkout (e2e)', () => {
     expect(
       (await prisma.product.findUniqueOrThrow({ where: { id: hat.id } })).stock,
     ).toBe(1);
-    expect(graph).toHaveLength(1);
+    expect(graph).toHaveLength(2);
     expect(graph[0]).toMatchObject({
       recipient: { id: PSID },
       messaging_type: 'UPDATE',
     });
     expect(graph[0].message?.text).toMatch(/^Tolbor amjilttai.*118,000₮/);
+    expect(graph[1]).toMatchObject({
+      recipient: { id: 'psid-orders-owner' },
+      messaging_type: 'UPDATE',
+    });
+    expect(graph[1].message?.text).toContain(
+      'Ноолууран малгай (нэг хэмжээ, хар) × 2',
+    );
+    expect(graph[1].message?.text).toContain('Утас: 99112233');
 
     // A second payment is refused and stock stays put.
     const again = await pay(token, {
