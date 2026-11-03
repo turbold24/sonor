@@ -51,6 +51,8 @@ enum OrderStatus {
 
 enum PaymentProvider {
   QPAY
+  /// Sonor's own demo checkout page; no money moves.
+  DEMO
 }
 
 enum PaymentLinkStatus {
@@ -195,17 +197,22 @@ model Message {
 }
 
 model Order {
-  id             String      @id @default(cuid())
-  tenantId       String
-  customerId     String
-  conversationId String?
-  status         OrderStatus @default(DRAFT)
+  id              String      @id @default(cuid())
+  tenantId        String
+  customerId      String
+  conversationId  String?
+  status          OrderStatus @default(DRAFT)
   /// Whole tögrög, computed on the server from item snapshots.
-  total          Int
-  currency       Currency    @default(MNT)
-  expiresAt      DateTime?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  total           Int
+  currency        Currency    @default(MNT)
+  expiresAt       DateTime?
+  paidAt          DateTime?
+  /// Entered by the customer on the checkout page, never in chat.
+  contactPhone    String?
+  deliveryAddress String?
+  customerNote    String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
@@ -227,6 +234,8 @@ model OrderItem {
   quantity    Int
   /// Whole tögrög, read from the server at order time, never from the model's output.
   unitPrice   Int
+  /// Chosen options, e.g. { "size": "M", "color": "хар" }.
+  options     Json?
 
   tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -245,6 +254,9 @@ model PaymentLink {
   externalInvoiceId String?
   paymentUrl        String?
   qrText            String?
+  /// Random, unguessable token in the checkout URL.
+  token             String?           @unique
+  expiresAt         DateTime?
   createdAt         DateTime          @default(now())
   paidAt            DateTime?
 
