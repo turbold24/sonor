@@ -31,6 +31,7 @@ import {
   type TurnFallback,
   type TurnOutcome,
 } from './agent-turn.js';
+import { needsDisclosure, withDisclosure } from './disclosure.js';
 import { numbersIn } from './grounding.js';
 import { HANDOFF_TOOL, HANDOFF_TOOL_NAME } from './handoff.tool.js';
 import { toChatHistory, type StoredToolCall } from './history.js';
@@ -167,9 +168,12 @@ export class AgentService {
     const conversation = await this.findConversation(tenantId, conversationId);
     const { tenant } = conversation;
 
+    const disclose = await this.mustDisclose(tenantId, conversationId);
+
     if (!customerText.trim()) {
       // Attachments only (photo, voice, sticker): the agent reads text for now.
-      const reply = unsupportedMediaReply();
+      const note = unsupportedMediaReply();
+      const reply = disclose ? withDisclosure(note, 'cyrillic') : note;
       await this.save(tenant.id, conversationId, [
         { role: 'AGENT', text: reply },
       ]);
@@ -255,7 +259,8 @@ export class AgentService {
       fallback = 'model_error';
     }
 
-    const reply = outcome?.reply ?? fallbackReply(tenant, script);
+    const answer = outcome?.reply ?? fallbackReply(tenant, script);
+    const reply = disclose ? withDisclosure(answer, script) : answer;
     const steps = outcome?.steps ?? [];
     await this.save(tenant.id, conversationId, [
       ...steps.flatMap((step) => [
@@ -343,6 +348,24 @@ export class AgentService {
         toolError('tool_failed', 'The tool failed. Offer a human if needed.'),
       );
     }
+  }
+
+  /** Whether this reply must say it's automated (see disclosure.ts). */
+  private async mustDisclose(
+    tenantId: string,
+    conversationId: string,
+  ): Promise<boolean> {
+    const history = await this.prisma.message.findMany({
+      where: {
+        tenantId,
+        conversationId,
+        OR: [{ role: 'AGENT', text: { not: null } }, { role: 'OWNER' }],
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 50,
+      select: { role: true, createdAt: true },
+    });
+    return needsDisclosure(history, new Date());
   }
 
   private async findConversation(tenantId: string, conversationId: string) {

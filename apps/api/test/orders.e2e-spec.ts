@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import { withDisclosure } from '../src/agent/disclosure.js';
 import { AppModule } from '../src/app.module.js';
 import { encryptSecret, parseEncryptionKey } from '../src/common/encryption.js';
 import type { Product, Tenant } from '../src/generated/prisma/client.js';
@@ -209,7 +210,10 @@ describe('Orders and checkout (e2e)', () => {
       },
     ]);
     expect(texts()).toEqual([
-      'Nooluuran malgai har 2 sh, niit 118,000₮. Batalgaajuulah uu?',
+      withDisclosure(
+        'Nooluuran malgai har 2 sh, niit 118,000₮. Batalgaajuulah uu?',
+        'latin',
+      ),
     ]);
     expect(buttons()).toEqual([]);
 

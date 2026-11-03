@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { unsupportedMediaReply } from '../src/agent/agent.prompt.js';
+import { withDisclosure } from '../src/agent/disclosure.js';
 import { AppModule } from '../src/app.module.js';
 import { encryptSecret, parseEncryptionKey } from '../src/common/encryption.js';
 import type { Tenant } from '../src/generated/prisma/client.js';
@@ -31,6 +32,8 @@ const APP_ID = '424242';
 const PAGE_INBOX_APP_ID = 263902037430900;
 const PAGE_TOKEN = 'e2e-page-token';
 const REPLY = 'Сайн байна уу! Танд юугаар туслах вэ?';
+// A chat's first bot reply also says it's automated, in the customer's script.
+const FIRST_LATIN = withDisclosure(REPLY, 'latin');
 
 process.env.MESSENGER_APP_SECRET = APP_SECRET;
 process.env.MESSENGER_VERIFY_TOKEN = VERIFY_TOKEN;
@@ -267,7 +270,7 @@ describe('Messenger webhook (e2e)', () => {
     expect(send.body).toEqual({
       recipient: { id: psid },
       messaging_type: 'RESPONSE',
-      message: { text: REPLY, metadata: OWN_MESSAGE_METADATA },
+      message: { text: FIRST_LATIN, metadata: OWN_MESSAGE_METADATA },
     });
     expect(send.url.searchParams.get('access_token')).toBe(PAGE_TOKEN);
     expect(send.url.searchParams.get('appsecret_proof')).toBeTruthy();
@@ -275,7 +278,7 @@ describe('Messenger webhook (e2e)', () => {
     const { messages } = await conversationOf(psid);
     expect(messages.map((m) => [m.role, m.text])).toEqual([
       ['CUSTOMER', 'deel bga yu?'],
-      ['AGENT', REPLY],
+      ['AGENT', FIRST_LATIN],
     ]);
   });
 
@@ -290,7 +293,7 @@ describe('Messenger webhook (e2e)', () => {
     await deliver(body);
 
     expect(modelChat).toHaveBeenCalledTimes(1);
-    expect(sentTexts()).toEqual([REPLY]);
+    expect(sentTexts()).toEqual([FIRST_LATIN]);
     const { messages } = await conversationOf(psid);
     expect(messages.filter((m) => m.role === 'CUSTOMER')).toHaveLength(1);
   });
@@ -311,7 +314,11 @@ describe('Messenger webhook (e2e)', () => {
       ),
     );
 
-    expect(sentTexts()).toEqual(['Эхний хариу.', 'Хоёр дахь хариу.']);
+    // Only the first reply carries the disclosure.
+    expect(sentTexts()).toEqual([
+      withDisclosure('Эхний хариу.', 'latin'),
+      'Хоёр дахь хариу.',
+    ]);
   });
 
   it('pauses the bot when the owner replies from the Page inbox', async () => {
@@ -345,6 +352,37 @@ describe('Messenger webhook (e2e)', () => {
     ]);
     expect(modelChat).not.toHaveBeenCalled();
     expect(graphCalls).toEqual([]);
+  });
+
+  it('says it is automated again when the bot takes over from the owner', async () => {
+    const psid = uid('psid');
+    await deliver(
+      payload(tenant.facebookPageId, fromCustomer(psid, { text: 'hi' })),
+    );
+    await deliver(
+      payload(tenant.facebookPageId, fromCustomer(psid, { text: 'hi again' })),
+    );
+    await deliver(
+      payload(
+        tenant.facebookPageId,
+        echo(psid, { text: 'Би менежер.', app_id: PAGE_INBOX_APP_ID }),
+      ),
+    );
+    const { id } = await conversationOf(psid);
+    await prisma.conversation.update({
+      where: { id },
+      data: { botPaused: false, pausedAt: null },
+    });
+    graphCalls.length = 0;
+
+    await deliver(
+      payload(
+        tenant.facebookPageId,
+        fromCustomer(psid, { text: 'bas neg asuult' }),
+      ),
+    );
+
+    expect(sentTexts()).toEqual([FIRST_LATIN]);
   });
 
   it("ignores echoes of Sonor's own replies", async () => {
@@ -406,7 +444,9 @@ describe('Messenger webhook (e2e)', () => {
     );
 
     expect(modelChat).not.toHaveBeenCalled();
-    expect(sentTexts()).toEqual([unsupportedMediaReply()]);
+    expect(sentTexts()).toEqual([
+      withDisclosure(unsupportedMediaReply(), 'cyrillic'),
+    ]);
     const { messages } = await conversationOf(psid);
     expect(messages[0]).toMatchObject({
       role: 'CUSTOMER',
@@ -527,7 +567,9 @@ describe('Messenger webhook (e2e)', () => {
       const conversation = await conversationOf(psid);
       const code = conversation.id.slice(-6).toUpperCase();
       expect(conversation.botPaused).toBe(true);
-      expect(sentTo(psid)).toEqual(['Манай менежер удахгүй хариулна.']);
+      expect(sentTo(psid)).toEqual([
+        withDisclosure('Манай менежер удахгүй хариулна.', 'latin'),
+      ]);
       const alerts = graphCalls.filter(
         (call) => call.body.recipient.id === OWNER,
       );
@@ -557,7 +599,7 @@ describe('Messenger webhook (e2e)', () => {
         ),
       );
       expect(modelChat).toHaveBeenCalled();
-      expect(sentTo(OWNER)).toEqual([REPLY]);
+      expect(sentTo(OWNER)).toEqual([FIRST_LATIN]);
     });
 
     it('treats commands from anyone else as ordinary messages', async () => {
@@ -569,7 +611,7 @@ describe('Messenger webhook (e2e)', () => {
         ),
       );
       expect(modelChat).toHaveBeenCalled();
-      expect(sentTo(psid)).toEqual([REPLY]);
+      expect(sentTo(psid)).toEqual([FIRST_LATIN]);
     });
   });
 });
