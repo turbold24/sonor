@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="mn">
+  <head>
+    <meta charset="utf-8" />
+    <title>Дулаан Дээл, cover photo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,500&family=Montserrat:wght@500;600&display=block"
+      rel="stylesheet"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #4c1220;
+      }
+      .cover {
+        position: relative;
+        width: 1640px;
+        height: 924px;
+        overflow: hidden;
+        background: radial-gradient(
+          120% 140% at 50% 45%,
+          #7d2537 0%,
+          #5a1826 55%,
+          #3f0f1b 100%
+        );
+        color: #f4ebdd;
+        font-family: 'Montserrat', 'PT Sans', sans-serif;
+      }
+      .band {
+        position: absolute;
+        left: 0;
+        width: 100%;
+        height: 30px;
+      }
+      .band.top {
+        top: 168px;
+      }
+      .band.bottom {
+        top: 726px;
+      }
+      .content {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .kicker {
+        font-weight: 600;
+        font-size: 26px;
+        letter-spacing: 0.32em;
+        color: #c8955a;
+        margin-bottom: 18px;
+      }
+      .name {
+        font-family: 'Playfair Display', 'PT Serif', serif;
+        font-weight: 700;
+        font-size: 168px;
+        line-height: 1;
+        letter-spacing: 0.01em;
+      }
+      .tagline {
+        font-family: 'Playfair Display', 'PT Serif', serif;
+        font-style: italic;
+        font-weight: 500;
+        font-size: 42px;
+        margin-top: 34px;
+        color: #eadbc4;
+      }
+      .cta {
+        margin-top: 40px;
+        padding: 14px 34px;
+        border: 2px solid #c8955a;
+        border-radius: 999px;
+        font-weight: 500;
+        font-size: 26px;
+        letter-spacing: 0.02em;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Cover photo for the fictional demo shop Дулаан Дээл. 1640x924 (16:9 for phones); the text stays in the middle
+     1640x624 band that desktop shows, and away from the bottom-left corner where the profile picture sits on phones. -->
+    <div class="cover">
+      <svg
+        class="band top"
+        viewBox="0 0 1640 30"
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <!-- Алхан хээ (key pattern), one 40x40 unit scaled to 30px high -->
+          <pattern
+            id="key"
+            width="30"
+            height="30"
+            patternUnits="userSpaceOnUse"
+          >
+            <g
+              transform="scale(0.75)"
+              fill="none"
+              stroke="#c8955a"
+              stroke-width="4"
+              stroke-linecap="square"
+            >
+              <path d="M0 36 H40" />
+              <path d="M36 36 V4 H4 V28 H28 V12 H12 V20 H20" />
+            </g>
+          </pattern>
+        </defs>
+        <rect width="1640" height="30" fill="url(#key)" opacity="0.7" />
+      </svg>
+      <svg
+        class="band bottom"
+        viewBox="0 0 1640 30"
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <rect
+          width="1640"
+          height="30"
+          fill="url(#key)"
+          opacity="0.7"
+          transform="matrix(1 0 0 -1 0 30)"
+        />
+      </svg>
+
+      <div class="content">
+        <div class="kicker">ДЭЭЛ · НООЛУУР · ӨВЛИЙН ХУВЦАС</div>
+        <div class="name">Дулаан Дээл</div>
+        <div class="tagline">Уламжлал ба орчин үе нэг дээлд</div>
+        <div class="cta">Messenger-ээр асуугаад шууд захиалаарай</div>
+      </div>
+    </div>
+  </body>
+</html>

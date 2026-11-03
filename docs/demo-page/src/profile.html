@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="mn">
+  <head>
+    <meta charset="utf-8" />
+    <title>Дулаан Дээл, profile picture</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #5a1826;
+      }
+      svg {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Profile picture for the fictional demo shop Дулаан Дээл. Rendered at 1080x1080; Facebook crops it to a circle. -->
+    <svg
+      width="1080"
+      height="1080"
+      viewBox="0 0 1080 1080"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <defs>
+        <radialGradient id="bg" cx="50%" cy="42%" r="70%">
+          <stop offset="0" stop-color="#7d2537" />
+          <stop offset="1" stop-color="#4c1220" />
+        </radialGradient>
+        <clipPath id="body">
+          <path
+            id="deel"
+            d="M500 288 L392 322 L262 528 L326 566 L424 438 L366 836 Q540 856 714 836 L656 438 L754 566 L818 528 L688 322 L580 288 Z"
+          />
+        </clipPath>
+      </defs>
+
+      <rect width="1080" height="1080" fill="url(#bg)" />
+      <!-- Thin ring inside the circular crop -->
+      <circle
+        cx="540"
+        cy="540"
+        r="470"
+        fill="none"
+        stroke="#c8955a"
+        stroke-width="6"
+        opacity="0.55"
+      />
+
+      <g transform="translate(540 550) scale(1.12) translate(-540 -550)">
+        <!-- Deel: body and sleeves -->
+        <use href="#deel" fill="#f4ebdd" />
+        <g clip-path="url(#body)">
+          <!-- Sash -->
+          <rect x="300" y="574" width="480" height="46" fill="#c8955a" />
+          <!-- Cuffs -->
+          <path d="M262 528 L326 566 L340 543 L276 505 Z" fill="#c8955a" />
+          <path d="M818 528 L754 566 L740 543 L804 505 Z" fill="#c8955a" />
+        </g>
+        <!-- Front flap edge with trim -->
+        <path
+          d="M556 300 C 556 380 480 410 426 446"
+          fill="none"
+          stroke="#c8955a"
+          stroke-width="16"
+          stroke-linecap="round"
+        />
+        <!-- Buttons along the flap -->
+        <circle cx="548" cy="356" r="9" fill="#5a1826" />
+        <circle cx="496" cy="410" r="9" fill="#5a1826" />
+        <!-- Collar -->
+        <path
+          d="M494 296 L494 262 Q540 246 586 262 L586 296 Q540 284 494 296 Z"
+          fill="#c8955a"
+        />
+      </g>
+    </svg>
+  </body>
+</html>
