@@ -28,7 +28,8 @@
     "db:studio": "pnpm --filter @sonor/api db:studio",
     "model:smoke": "pnpm --filter @sonor/api model:smoke",
     "agent:eval": "pnpm --filter @sonor/api agent:eval",
-    "tenant:connect-page": "pnpm --filter @sonor/api tenant:connect-page"
+    "tenant:connect-page": "pnpm --filter @sonor/api tenant:connect-page",
+    "tenant:owner-code": "pnpm --filter @sonor/api tenant:owner-code"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
