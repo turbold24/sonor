@@ -16,6 +16,8 @@ import type {
   ToolDefinition,
   TokenUsage,
 } from '../model/model.types.js';
+import { ORDER_TOOL_NAMES, ORDER_TOOLS } from '../orders/order.tools.js';
+import { OrderService, type PaymentLinkInfo } from '../orders/order.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   buildSystemPrompt,
@@ -65,12 +67,15 @@ export interface AgentReply {
   usage: TokenUsage & { calls: number };
   regenerated: boolean;
   fallback: TurnFallback | 'model_error';
+  /** A payment link confirm_order created this turn, for the channel to send as a button. */
+  paymentLink: PaymentLinkInfo | null;
 }
 
 interface TurnContext {
   tenant: Tenant;
   conversationId: string;
   tools: Map<string, ToolDefinition>;
+  paymentLink?: PaymentLinkInfo;
 }
 
 @Injectable()
@@ -82,6 +87,7 @@ export class AgentService {
     private readonly prisma: PrismaService,
     private readonly model: ModelService,
     private readonly connectors: ConnectorRegistry,
+    private readonly orders: OrderService,
     config: ConfigService,
   ) {
     const hours = Number(config.get<string>('BOT_PAUSE_HOURS'));
@@ -186,8 +192,14 @@ export class AgentService {
       }),
     ]);
 
+    // Orders are built in for DEMO tenants, whose catalog and prices live in Sonor.
+    const ordering = tenant.connectorType === 'DEMO';
     const tools = [
-      ...connectorTools.filter((tool) => tool.name !== HANDOFF_TOOL_NAME),
+      ...connectorTools.filter(
+        (tool) =>
+          tool.name !== HANDOFF_TOOL_NAME && !ORDER_TOOL_NAMES.has(tool.name),
+      ),
+      ...(ordering ? ORDER_TOOLS : []),
       HANDOFF_TOOL,
     ];
     const context: TurnContext = {
@@ -209,7 +221,7 @@ export class AgentService {
           messages: [
             {
               role: 'system',
-              content: buildSystemPrompt(tenant, brief, script),
+              content: buildSystemPrompt(tenant, brief, script, { ordering }),
             },
             ...toChatHistory(rows.reverse()),
           ],
@@ -279,6 +291,7 @@ export class AgentService {
       usage: outcome?.usage ?? emptyUsage(),
       regenerated: outcome?.regenerated ?? false,
       fallback,
+      paymentLink: context.paymentLink ?? null,
     };
   }
 
@@ -305,6 +318,16 @@ export class AgentService {
           handedOff: true,
           contact: tenant.agentHandoffContact,
         });
+      }
+      if (ORDER_TOOL_NAMES.has(call.name)) {
+        const result = await this.orders.runTool(
+          tenant.id,
+          conversationId,
+          call.name,
+          validated.args,
+        );
+        if (result.paymentLink) context.paymentLink = result.paymentLink;
+        return serialize(result.output);
       }
       const connector = this.connectors.forTenant(tenant);
       return serialize(
@@ -376,6 +399,7 @@ function silentReply(status: ReceiveStatus): AgentReply {
     usage: emptyUsage(),
     regenerated: false,
     fallback: 'none',
+    paymentLink: null,
   };
 }
 

@@ -129,7 +129,7 @@ export class DemoConnector implements CatalogConnector {
     return [
       `${tenant.name}: ${BUSINESS_TYPES[tenant.businessType] ?? tenant.businessType}.`,
       `Барааны ангилал: ${categories.join(', ')}.`,
-      'Үнэ төгрөгөөр (₮). Хүргэлт, буцаалт, төлбөрийн нөхцөлийн талаар мэдээлэл байхгүй.',
+      'Үнэ төгрөгөөр (₮). Захиалгыг чатаар авч, төлбөрийг илгээсэн холбоосоор төлнө (демо). Хүргэлт, буцаалтын нөхцөлийн талаар мэдээлэл байхгүй.',
     ].join('\n');
   }
 

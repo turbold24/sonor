@@ -26,6 +26,18 @@ describe('buildSystemPrompt', () => {
     );
   });
 
+  it('adds the ordering rules only when the order tools are available', () => {
+    const withOrders = buildSystemPrompt(tenant, null, 'cyrillic', {
+      ordering: true,
+    });
+    expect(withOrders).toContain('create_order');
+    expect(withOrders).toContain('confirm_order');
+    expect(withOrders).toContain('URL бүү бич');
+    expect(buildSystemPrompt(tenant, null, 'cyrillic')).not.toMatch(
+      /create_order|confirm_order/,
+    );
+  });
+
   it('fences the business brief as data', () => {
     const prompt = buildSystemPrompt(
       tenant,

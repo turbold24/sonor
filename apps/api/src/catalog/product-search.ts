@@ -96,6 +96,14 @@ export function attributeValues(value: unknown): string[] {
 
 /** Whether `wanted` is one of the offered options, comparing across scripts. */
 export function isOffered(wanted: string, offered: unknown): boolean {
+  return matchOption(wanted, offered) !== undefined;
+}
+
+/** The offered option the customer means, in the catalog's spelling ("har" → "хар"). */
+export function matchOption(
+  wanted: string,
+  offered: unknown,
+): string | undefined {
   const key = toLatinKey(wanted);
-  return attributeValues(offered).some((option) => toLatinKey(option) === key);
+  return attributeValues(offered).find((option) => toLatinKey(option) === key);
 }
