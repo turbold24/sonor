@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { toolError } from '../catalog/catalog.types.js';
 import type { OrderStatus, Prisma } from '../generated/prisma/client.js';
+import type { PaidOrderAlert } from '../messenger/owner-messages.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   parseItems,
@@ -67,6 +68,8 @@ export interface PaidNotice {
   conversationId: string | null;
   orderCode: string;
   total: number;
+  /** For the owner's alert, with the contact details from checkout. */
+  order: PaidOrderAlert;
 }
 
 export type PayResult =
@@ -216,6 +219,14 @@ export class OrderService {
         conversationId: link.order.conversationId,
         orderCode: view.orderCode,
         total: view.total,
+        order: {
+          orderCode: view.orderCode,
+          total: view.total,
+          items: view.items,
+          phone: contact.phone,
+          address: contact.address,
+          note: contact.note,
+        },
       },
     };
   }

@@ -9,6 +9,7 @@ import {
 } from './messenger.config.js';
 import { MessengerController } from './messenger.controller.js';
 import { MessengerService } from './messenger.service.js';
+import { OwnerService } from './owner.service.js';
 
 @Module({
   imports: [AgentModule],
@@ -39,7 +40,8 @@ import { MessengerService } from './messenger.service.js';
         }),
     },
     MessengerService,
+    OwnerService,
   ],
-  exports: [MessengerService],
+  exports: [MessengerService, OwnerService],
 })
 export class MessengerModule {}

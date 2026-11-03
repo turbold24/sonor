@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AgentService, type AgentReply } from '../agent/agent.service.js';
 import { ConversationService } from '../agent/conversation.service.js';
+import { HANDOFF_TOOL_NAME } from '../agent/handoff.tool.js';
 import { decryptSecret, parseEncryptionKey } from '../common/encryption.js';
 import { detectScript, type Script } from '../common/mongolian-script.js';
 import type { Prisma } from '../generated/prisma/client.js';
@@ -22,6 +23,7 @@ import {
   type EchoEvent,
   type MessengerEvent,
 } from './messenger.events.js';
+import { OwnerService } from './owner.service.js';
 import { SerialQueue } from './serial-queue.js';
 
 // Messenger shows "typing…" for about 20 seconds; refresh it while the agent works.
@@ -41,6 +43,7 @@ export class MessengerService {
     private readonly conversations: ConversationService,
     private readonly agent: AgentService,
     private readonly graph: GraphClient,
+    private readonly owner: OwnerService,
     private readonly config: ConfigService,
     @Inject(MESSENGER_CONFIG) private readonly messenger: MessengerConfig,
   ) {}
@@ -71,6 +74,13 @@ export class MessengerService {
       return;
     }
     if (event.kind === 'echo' && this.isOwnEcho(event)) return;
+    if (
+      event.kind === 'message' &&
+      ((await this.owner.tryLink(tenant, event.psid, event.text)) ||
+        (await this.owner.tryCommand(tenant, event.psid, event.text)))
+    ) {
+      return;
+    }
 
     const conversation = await this.conversations.findOrStart(
       tenant.id,
@@ -142,6 +152,18 @@ export class MessengerService {
     } catch (error) {
       this.logger.error(
         `reply not delivered tenant=${tenant.id} conversation=${conversation.id}: ${describe(error)}`,
+      );
+    }
+
+    if (result.handoff) {
+      const reason = result.toolCalls.find(
+        (call) => call.name === HANDOFF_TOOL_NAME,
+      )?.arguments?.reason;
+      await this.owner.alertHandoff(
+        tenant,
+        conversation.id,
+        typeof reason === 'string' ? reason : undefined,
+        event.text,
       );
     }
   }

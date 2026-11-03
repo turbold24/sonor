@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { MessengerService } from '../messenger/messenger.service.js';
+import { OwnerService } from '../messenger/owner.service.js';
 import {
   renderCheckout,
   renderNotFound,
@@ -29,6 +30,7 @@ export class CheckoutController {
   constructor(
     private readonly orders: OrderService,
     private readonly messenger: MessengerService,
+    private readonly owner: OwnerService,
   ) {}
 
   @Get(':token')
@@ -93,6 +95,7 @@ export class CheckoutController {
             (script) => paidNotice(script, notice.orderCode, notice.total),
           );
         }
+        await this.owner.alertPaidOrder(notice.tenantId, notice.order);
         return renderCheckout(result.view, { notice: 'paid_now' });
       }
       default:
