@@ -9,6 +9,7 @@ const config: ModelConfig = {
   model: 'muse-spark-1.3',
   baseUrl: 'https://api.meta.ai/v1/',
   apiKey: API_KEY,
+  relaySecret: undefined,
   timeoutMs: 1_000,
   maxRetries: 2,
   maxOutputTokens: 2048,
@@ -80,6 +81,29 @@ describe('MetaModelProvider', () => {
       max_output_tokens: 512,
       reasoning: { effort: 'low' },
       store: false,
+    });
+  });
+
+  it('adds the relay secret header only when one is configured', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    fetch.mockResolvedValueOnce(jsonResponse(200, okBody));
+    const provider = new MetaModelProvider(
+      {
+        ...config,
+        baseUrl: 'https://relay.example.test/api/v1',
+        relaySecret: 'relay-secret',
+      },
+      { fetch, sleep: () => Promise.resolve(), random: () => 0 },
+    );
+
+    await provider.chat(user, []);
+
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe('https://relay.example.test/api/v1/responses');
+    expect(init?.headers).toEqual({
+      Authorization: `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json',
+      'X-Relay-Secret': 'relay-secret',
     });
   });
 

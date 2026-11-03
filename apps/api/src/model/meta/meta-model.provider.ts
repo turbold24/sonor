@@ -114,6 +114,9 @@ export class MetaModelProvider implements ModelProvider {
         headers: {
           Authorization: `Bearer ${this.config.apiKey}`,
           'Content-Type': 'application/json',
+          ...(this.config.relaySecret
+            ? { 'X-Relay-Secret': this.config.relaySecret }
+            : {}),
         },
         body: payload,
         signal: signal ? AbortSignal.any([signal, timeout]) : timeout,

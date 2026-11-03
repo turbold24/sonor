@@ -9,6 +9,7 @@ describe('loadModelConfig', () => {
       model: 'muse-spark-1.3',
       baseUrl: 'https://api.meta.ai/v1',
       apiKey: undefined,
+      relaySecret: undefined,
       timeoutMs: 60_000,
       maxRetries: 2,
       maxOutputTokens: 4096,

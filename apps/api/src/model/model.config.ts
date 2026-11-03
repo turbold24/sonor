@@ -21,6 +21,11 @@ export interface ModelConfig {
   baseUrl: string;
   /** Optional at boot so the app runs without it; calls fail until it's set. */
   apiKey: string | undefined;
+  /**
+   * Sent as X-Relay-Secret when MODEL_BASE_URL points at Sonor's model relay (see
+   * relay/), for hosts whose own IPs the Model API doesn't serve.
+   */
+  relaySecret: string | undefined;
   /** Per HTTP attempt. */
   timeoutMs: number;
   /** Retries for 429 and 5xx only. */
@@ -57,6 +62,7 @@ export function loadModelConfig(get: EnvGetter): ModelConfig {
     model: value('MODEL_ID') ?? 'muse-spark-1.3',
     baseUrl: value('MODEL_BASE_URL') ?? 'https://api.meta.ai/v1',
     apiKey: value('MODEL_API_KEY'),
+    relaySecret: value('MODEL_RELAY_SECRET'),
     timeoutMs: integer(get, 'MODEL_TIMEOUT_MS', 60_000, 1_000, 600_000),
     maxRetries: integer(get, 'MODEL_MAX_RETRIES', 2, 0, 5),
     maxOutputTokens: integer(
