@@ -28,3 +28,6 @@ apps/api/src/generated/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Vercel CLI project link (relay/)
+.vercel
