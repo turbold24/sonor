@@ -20,6 +20,7 @@ import { ORDER_TOOL_NAMES, ORDER_TOOLS } from '../orders/order.tools.js';
 import { OrderService, type PaymentLinkInfo } from '../orders/order.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
+  answerNowNotice,
   buildSystemPrompt,
   fallbackReply,
   groundingCorrection,
@@ -233,6 +234,7 @@ export class AgentService {
           ]),
           fallbackReply: fallbackReply(tenant, script),
           correction: groundingCorrection,
+          answerNow: answerNowNotice(),
         },
         {
           chat: (messages, turnTools) =>

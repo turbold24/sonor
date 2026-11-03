@@ -15,7 +15,7 @@ export const ORDER_TOOL_NAMES = new Set([
 export const ORDER_TOOLS: ToolDefinition[] = [
   {
     name: CREATE_ORDER,
-    description: `Draft an order for this chat when the customer wants to buy. Prices and the total come from the catalog. Replaces any unpaid order in this chat. Sizes and colors must be chosen when the product offers several. Returns the items, total and orderCode, or problems to ask the customer about. Up to ${MAX_QUANTITY} of each item.`,
+    description: `Draft an order for this chat when the customer wants to buy. Prices and the total come from the catalog. Replaces any unpaid order in this chat. It checks stock, sizes and colors itself, so call it as soon as you know the productId; no need to check availability first. Sizes and colors must be chosen when the product offers several. Returns the items, total and orderCode, or problems to ask the customer about. Up to ${MAX_QUANTITY} of each item.`,
     parameters: {
       type: 'object',
       properties: {

@@ -47,6 +47,7 @@ const input = {
   allowedNumbers: new Set<number>(),
   fallbackReply: 'FALLBACK',
   correction: (prices: number[]) => `CORRECTION ${prices.join(',')}`,
+  answerNow: 'ANSWER NOW',
 };
 
 const PRODUCT = '{"results":[{"name":"Эрэгтэй богино дээл","price":245000}]}';
@@ -140,9 +141,26 @@ describe('runAgentTurn', () => {
     expect(outcome.reply).toBe('Манай утас 7700 1234.');
   });
 
-  it('stops after maxIterations of tool calls', async () => {
+  it('asks for an answer once the tool rounds run out', async () => {
     const d = deps(
       ...Array.from({ length: 4 }, () =>
+        toolCall('search_products', { query: 'x' }),
+      ),
+      answer('Олдсонгүй, өөр юу хайх вэ?'),
+    );
+
+    const outcome = await runAgentTurn(input, d);
+
+    expect(outcome.reply).toBe('Олдсонгүй, өөр юу хайх вэ?');
+    expect(outcome.fallback).toBe('none');
+    expect(outcome.steps).toHaveLength(4);
+    expect(outcome.usage.calls).toBe(5);
+    expect(d.seen[4].at(-1)).toEqual({ role: 'system', content: 'ANSWER NOW' });
+  });
+
+  it('falls back without running tools asked for after the last round', async () => {
+    const d = deps(
+      ...Array.from({ length: 5 }, () =>
         toolCall('search_products', { query: 'x' }),
       ),
     );
@@ -151,7 +169,8 @@ describe('runAgentTurn', () => {
 
     expect(outcome.reply).toBe('FALLBACK');
     expect(outcome.fallback).toBe('max_iterations');
-    expect(d.chat).toHaveBeenCalledTimes(4);
+    expect(d.chat).toHaveBeenCalledTimes(5);
+    expect(d.runTool).toHaveBeenCalledTimes(4);
     expect(outcome.steps).toHaveLength(4);
   });
 

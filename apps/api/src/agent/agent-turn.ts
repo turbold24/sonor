@@ -22,6 +22,8 @@ export interface TurnInput {
   allowedNumbers: Set<number>;
   fallbackReply: string;
   correction: (prices: number[]) => string;
+  /** Sent when the tool rounds run out, asking for an answer from the results so far. */
+  answerNow: string;
 }
 
 export interface TurnDeps {
@@ -93,9 +95,19 @@ export async function runAgentTurn(
       ...numbersIn(steps.flatMap((step) => step.outputs)),
     ]);
 
-  const text = await loop(input.maxIterations);
-  if (text === undefined)
-    return finish(input.fallbackReply, 'max_iterations', false);
+  let text = await loop(input.maxIterations);
+  if (text === undefined) {
+    // Tool rounds used up: one more call to answer from what the tools returned. Tools
+    // it still asks for are not run.
+    messages.push({ role: 'system', content: input.answerNow });
+    const result = await deps.chat(messages, input.tools);
+    addUsage(usage, result.usage);
+    messages.push(toAssistantMessage(result));
+    if (result.toolCalls.length > 0) {
+      return finish(input.fallbackReply, 'max_iterations', false);
+    }
+    text = result.text;
+  }
   if (!text?.trim()) return finish(input.fallbackReply, 'no_answer', false);
 
   const reply = stripMarkdown(text);

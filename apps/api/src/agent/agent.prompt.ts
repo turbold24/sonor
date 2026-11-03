@@ -73,6 +73,11 @@ export function groundingCorrection(prices: number[]): string {
   return `Анхаар: чиний хариултад энэ удаагийн хэрэгслийн үр дүнд байхгүй үнэ (${prices.join(', ')}) байна. Үнэ, нийт дүнг зөвхөн search_products, get_product эсвэл create_order-ийн үр дүнгээс яг хуулж хэл, шаардлагатай бол хэрэгслийг дахин дууд. Нийт дүн, хөнгөлөлт бүү тооцоол. Хариултаа дахин бич.`;
 }
 
+/** Sent when the tool rounds run out, so the model answers instead of calling more tools. */
+export function answerNowNotice(): string {
+  return 'Хэрэгслийн дуудлагын хязгаар дууслаа. Дээрх үр дүнд тулгуурлаад хэрэглэгчид одоо хариул, дахин хэрэгсэл бүү дууд.';
+}
+
 /** Reply to photos, voice messages and stickers until the agent can read them. */
 export function unsupportedMediaReply(): string {
   return 'Уучлаарай, би одоогоор зөвхөн текст мессеж уншиж чаддаг. Асуултаа бичээд илгээнэ үү.';
