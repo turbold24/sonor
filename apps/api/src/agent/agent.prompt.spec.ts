@@ -1,7 +1,7 @@
 import { buildSystemPrompt, fallbackReply } from './agent.prompt.js';
 
 const tenant = {
-  name: 'Салхин Дээл',
+  name: 'Дулаан Дээл',
   agentTone: 'FRIENDLY' as const,
   agentGreeting: 'Сайн байна уу!',
   agentHandoffContact: 'Менежер удахгүй хариулна.',
@@ -11,7 +11,7 @@ describe('buildSystemPrompt', () => {
   it('speaks as the shop and never names the model', () => {
     const prompt = buildSystemPrompt(tenant, 'Брийф.', 'cyrillic');
 
-    expect(prompt).toContain('"Салхин Дээл" дэлгүүрийн');
+    expect(prompt).toContain('"Дулаан Дээл" дэлгүүрийн');
     expect(prompt).not.toMatch(/muse|spark|meta|llama/i);
     expect(prompt).toContain('Сайн байна уу!');
     expect(prompt).toContain('Менежер удахгүй хариулна.');

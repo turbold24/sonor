@@ -169,13 +169,13 @@ describe('GraphClient', () => {
 
   it('reads the Page behind a token and subscribes it to webhook fields', async () => {
     const { client, calls } = setup(
-      json({ id: '1001', name: 'Салхин Дээл' }),
+      json({ id: '1001', name: 'Дулаан Дээл' }),
       json({ success: true }),
     );
 
     expect(await client.page(TOKEN)).toEqual({
       id: '1001',
-      name: 'Салхин Дээл',
+      name: 'Дулаан Дээл',
     });
     await client.subscribePage('1001', TOKEN, ['messages', 'message_echoes']);
 

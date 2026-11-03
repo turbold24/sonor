@@ -19,13 +19,13 @@ export interface DemoTenant {
   products: DemoProduct[];
 }
 
-const salkhinDeel: DemoTenant = {
-  name: 'Салхин Дээл',
-  slug: 'salkhin-deel',
+const dulaanDeel: DemoTenant = {
+  name: 'Дулаан Дээл',
+  slug: 'dulaan-deel',
   businessType: 'clothing',
-  facebookPageId: 'demo-page-salkhin-deel',
+  facebookPageId: 'demo-page-dulaan-deel',
   agentGreeting:
-    'Сайн байна уу! Салхин Дээлд тавтай морилно уу. Дээл, өвлийн хувцасны талаар асуух зүйл байвал бичээрэй.',
+    'Сайн байна уу! Дулаан Дээлд тавтай морилно уу. Дээл, өвлийн хувцасны талаар асуух зүйл байвал бичээрэй.',
   agentHandoffContact:
     'Манай менежер удахгүй энэ чатад хариулна. Ажлын цаг: Даваа-Баасан 10:00-19:00.',
   products: [
@@ -294,4 +294,4 @@ const shuuderGoo: DemoTenant = {
   ],
 };
 
-export const demoTenants: DemoTenant[] = [salkhinDeel, shuuderGoo];
+export const demoTenants: DemoTenant[] = [dulaanDeel, shuuderGoo];
