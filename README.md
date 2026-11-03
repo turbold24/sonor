@@ -420,7 +420,7 @@ curl -s -X POST localhost:3000/dev/conversations/<conversationId>/resume
 
 You need a Meta developer account and a Facebook Page you manage; a test Page is fine.
 
-1. **Create the app.** In the [Meta App Dashboard](https://developers.facebook.com/apps), create an app with the use case **Engage with customers on Messenger from Meta**. It adds the permissions Sonor needs, including `pages_messaging` and `pages_manage_metadata`.
+1. **Create the app.** In the [Meta App Dashboard](https://developers.facebook.com/apps), create an app with the use case **Engage with customers on Messenger from Meta** (under the **Business messaging** filter). Its Page tokens carry `pages_messaging`, which is all Sonor needs to reply. Skip the business portfolio for testing.
 2. **Set the secrets.** Copy the App ID and App Secret (**App settings > Basic**) into `.env` as `MESSENGER_APP_ID` and `MESSENGER_APP_SECRET`. Set `MESSENGER_VERIFY_TOKEN` to a random string:
 
    ```bash
@@ -430,13 +430,13 @@ You need a Meta developer account and a Facebook Page you manage; a test Page is
 3. **Expose the API over HTTPS.** Meta only calls HTTPS URLs. For local testing, use a tunnel (see [Test end to end through a tunnel](#test-end-to-end-through-a-tunnel)).
 4. **Configure the webhook.** In the use case's **Messenger API Setup > Configure webhooks**, set the Callback URL to `https://<your-host>/webhooks/messenger` and the Verify token to your `MESSENGER_VERIFY_TOKEN`, then **Verify and save**. Sonor answers the handshake.
 5. **Connect the Page and get its token.** Under **Generate access tokens**, click **Connect**, pick your Page, then generate the Page access token and copy it.
-6. **Store the token on a tenant.** This checks the token with the Graph API (it must belong to the Page ID you give), stores the Page ID and the encrypted token, and never prints the token. Paste the token at the prompt, which doesn't echo it, or set `PAGE_ACCESS_TOKEN`:
+6. **Store the token on a tenant.** This checks the token with the Graph API's `debug_token` (it must be a valid Page token for this app with `pages_messaging`, and for the Page ID you give when Meta reports it), stores the Page ID and the encrypted token, and never prints the token. Paste the token at the prompt, which doesn't echo it, or set `PAGE_ACCESS_TOKEN`:
 
    ```bash
    pnpm tenant:connect-page --tenant dulaan-deel --page-id <PAGE_ID>
    ```
 
-7. **Subscribe to webhook fields.** Subscribe the Page to `messages`, `messaging_postbacks` and `message_echoes`: either **Add subscriptions** under **Generate access tokens**, or add `--subscribe` to the command in step 6.
+7. **Subscribe to webhook fields.** Subscribe the Page to `messages`, `messaging_postbacks` and `message_echoes` with **Add Subscriptions** under **Generate access tokens**. Adding `--subscribe` to the command in step 6 does the same, but only if the token also has `pages_manage_metadata`, which dashboard-generated tokens usually lack; the script says so if it doesn't.
 8. **Add testers.** While the app is unpublished, Sonor answers only people with a role on the app. Add them under **App roles > Roles** (as Testers, for example), and have them accept the invitation. App Review is only needed before the bot answers the public.
 
 Optional: turn on **Require App Secret** in the app's advanced settings. Sonor already sends `appsecret_proof` with every Graph API call.
