@@ -10,7 +10,7 @@ import { GraphClient, GraphError } from '../src/messenger/graph.client.js';
 import { loadMessengerConfig } from '../src/messenger/messenger.config.js';
 
 // Connects a Facebook Page to a tenant: checks the Page access token with the Graph
-// API, then stores the Page ID and the token, encrypted. The token is read from
+// API's debug_token, then stores the Page ID and the token, encrypted. The token is read from
 // PAGE_ACCESS_TOKEN or typed at a prompt that doesn't echo it, and is never printed.
 
 const USAGE = `Usage: pnpm tenant:connect-page --tenant <slug> --page-id <id> [--subscribe] [--skip-check]
@@ -84,13 +84,37 @@ async function main(): Promise<void> {
   });
 
   if (!values['skip-check']) {
-    const page = await graph.page(token);
-    if (page.id !== pageId) {
+    const info = await graph.tokenInfo(token);
+    if (!info.valid) {
       throw new UsageError(
-        `That token belongs to Page "${page.name}" (${page.id}), not ${pageId}.`,
+        'Meta says the token is not valid (expired or revoked).',
       );
     }
-    console.log(`The token is valid for Page "${page.name}" (${page.id}).`);
+    if (info.type !== 'PAGE') {
+      throw new UsageError(
+        `That is a ${info.type ?? 'non-Page'} token, not a Page access token. Generate one under Messenger API Setup > Generate access tokens.`,
+      );
+    }
+    if (messenger.appId && info.appId && info.appId !== messenger.appId) {
+      throw new UsageError(
+        `That token was made for app ${info.appId}, not MESSENGER_APP_ID (${messenger.appId}).`,
+      );
+    }
+    if (info.profileId && info.profileId !== pageId) {
+      throw new UsageError(
+        `That token belongs to Page ${info.profileId}, not ${pageId}.`,
+      );
+    }
+    if (!info.scopes.includes('pages_messaging')) {
+      throw new UsageError(
+        'The token lacks the pages_messaging permission, so Sonor could not reply.',
+      );
+    }
+    console.log(
+      info.profileId
+        ? `The token is a valid Page token for Page ${info.profileId}, with pages_messaging.`
+        : 'The token is a valid Page token with pages_messaging. Meta did not say which Page it is for.',
+    );
   }
 
   const prisma = new PrismaClient({
@@ -122,7 +146,17 @@ async function main(): Promise<void> {
   }
 
   if (values.subscribe) {
-    await graph.subscribePage(pageId, token, WEBHOOK_FIELDS);
+    try {
+      await graph.subscribePage(pageId, token, WEBHOOK_FIELDS);
+    } catch (error) {
+      // Dashboard-generated Page tokens often carry only pages_messaging.
+      if (error instanceof GraphError && error.code === 200) {
+        throw new UsageError(
+          `Could not subscribe: the token lacks pages_manage_metadata. The Page is connected; subscribe it to ${WEBHOOK_FIELDS.join(', ')} with Add Subscriptions under Messenger API Setup > Generate access tokens.`,
+        );
+      }
+      throw error;
+    }
     console.log(`Subscribed the app to ${WEBHOOK_FIELDS.join(', ')}.`);
   }
 }

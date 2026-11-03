@@ -38,6 +38,16 @@ export class GraphError extends Error {
   }
 }
 
+export interface TokenInfo {
+  valid: boolean;
+  /** PAGE for a Page access token. */
+  type?: string;
+  appId?: string;
+  /** The Page ID for a Page token. Not in Meta's documented example, so it may be missing. */
+  profileId?: string;
+  scopes: string[];
+}
+
 export interface GraphClientOptions {
   /** e.g. "v26.0" */
   version: string;
@@ -97,12 +107,35 @@ export class GraphClient {
     return ids;
   }
 
-  /** The Page a Page access token belongs to. */
-  async page(pageToken: string): Promise<{ id: string; name: string }> {
-    const response = await this.request('GET', '/me', pageToken, undefined, {
-      fields: 'id,name',
-    });
-    return { id: String(response.id), name: String(response.name) };
+  /**
+   * What Meta knows about a token, from GET /debug_token, inspecting the token with itself.
+   * Unlike reading /me, this needs no pages_read_engagement permission.
+   */
+  async tokenInfo(pageToken: string): Promise<TokenInfo> {
+    const response = await this.request(
+      'GET',
+      '/debug_token',
+      pageToken,
+      undefined,
+      { input_token: pageToken },
+    );
+    const data =
+      typeof response.data === 'object' && response.data !== null
+        ? (response.data as Record<string, unknown>)
+        : {};
+    const text = (value: unknown) =>
+      typeof value === 'string' || typeof value === 'number'
+        ? String(value)
+        : undefined;
+    return {
+      valid: data.is_valid === true,
+      type: text(data.type),
+      appId: text(data.app_id),
+      profileId: text(data.profile_id),
+      scopes: Array.isArray(data.scopes)
+        ? data.scopes.filter((scope) => typeof scope === 'string')
+        : [],
+    };
   }
 
   /** Subscribes this app to the Page's webhook fields. */

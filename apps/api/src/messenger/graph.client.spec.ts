@@ -167,26 +167,64 @@ describe('GraphClient', () => {
     expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(TOKEN);
   });
 
-  it('reads the Page behind a token and subscribes it to webhook fields', async () => {
+  it('inspects a token with debug_token and subscribes the Page to webhook fields', async () => {
     const { client, calls } = setup(
-      json({ id: '1001', name: 'Дулаан Дээл' }),
+      json({
+        data: {
+          app_id: '424242',
+          type: 'PAGE',
+          application: 'Sonor',
+          is_valid: true,
+          profile_id: '1001',
+          scopes: ['pages_messaging', 'pages_manage_metadata'],
+        },
+      }),
       json({ success: true }),
     );
 
-    expect(await client.page(TOKEN)).toEqual({
-      id: '1001',
-      name: 'Дулаан Дээл',
+    expect(await client.tokenInfo(TOKEN)).toEqual({
+      valid: true,
+      type: 'PAGE',
+      appId: '424242',
+      profileId: '1001',
+      scopes: ['pages_messaging', 'pages_manage_metadata'],
     });
     await client.subscribePage('1001', TOKEN, ['messages', 'message_echoes']);
 
-    const [me, subscribe] = calls();
-    expect(me.method).toBe('GET');
-    expect(me.url.pathname).toBe('/v26.0/me');
-    expect(me.url.searchParams.get('fields')).toBe('id,name');
+    const [debug, subscribe] = calls();
+    expect(debug.method).toBe('GET');
+    expect(debug.url.pathname).toBe('/v26.0/debug_token');
+    expect(debug.url.searchParams.get('input_token')).toBe(TOKEN);
+    expect(debug.url.searchParams.get('access_token')).toBe(TOKEN);
+    expect(debug.url.searchParams.get('appsecret_proof')).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
     expect(subscribe.method).toBe('POST');
     expect(subscribe.url.pathname).toBe('/v26.0/1001/subscribed_apps');
     expect(subscribe.url.searchParams.get('subscribed_fields')).toBe(
       'messages,message_echoes',
     );
+  });
+
+  it('reports an invalid or unexpected token without throwing', async () => {
+    const { client } = setup(
+      json({ data: { is_valid: false, type: 'USER', scopes: 'oops' } }),
+      json({}),
+    );
+
+    expect(await client.tokenInfo(TOKEN)).toEqual({
+      valid: false,
+      type: 'USER',
+      appId: undefined,
+      profileId: undefined,
+      scopes: [],
+    });
+    expect(await client.tokenInfo(TOKEN)).toEqual({
+      valid: false,
+      type: undefined,
+      appId: undefined,
+      profileId: undefined,
+      scopes: [],
+    });
   });
 });
