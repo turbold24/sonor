@@ -129,6 +129,33 @@ describe('GraphClient', () => {
     expect(texts.map((text) => text.length)).toEqual([1500, 1500]);
   });
 
+  it('puts quick replies under the last part only, within Meta’s limits', async () => {
+    const { client, calls } = setup(
+      json({ message_id: 'mid.1' }),
+      json({ message_id: 'mid.2' }),
+    );
+
+    await client.sendText(
+      TOKEN,
+      PSID,
+      `${'а'.repeat(1500)}\n\n${'б'.repeat(1500)}`,
+      'RESPONSE',
+      [
+        { title: 'Тийм', payload: 'ORDER_YES' },
+        { title: 'x'.repeat(25), payload: 'LONG' },
+      ],
+    );
+
+    const messages = calls().map(
+      (call) => (call.body as { message: Record<string, unknown> }).message,
+    );
+    expect(messages[0]).not.toHaveProperty('quick_replies');
+    expect(messages[1].quick_replies).toEqual([
+      { content_type: 'text', title: 'Тийм', payload: 'ORDER_YES' },
+      { content_type: 'text', title: 'x'.repeat(20), payload: 'LONG' },
+    ]);
+  });
+
   it('sends sender actions on their own', async () => {
     const { client, calls } = setup(json({ recipient_id: PSID }));
 

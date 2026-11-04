@@ -9,6 +9,7 @@ import { PHOTO_MARKER, photoUrls } from '../common/photos.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { ImageInput } from '../model/model.types.js';
 import {
+  confirmQuickReplies,
   paymentButtonText,
   paymentButtonTitle,
 } from '../orders/order-messages.js';
@@ -145,11 +146,17 @@ export class MessengerService {
     if (!result.reply) return;
 
     try {
-      await this.graph.sendText(token, event.psid, result.reply);
+      const script = detectScript(event.text);
+      await this.graph.sendText(
+        token,
+        event.psid,
+        result.reply,
+        'RESPONSE',
+        result.askConfirmation ? confirmQuickReplies(script) : [],
+      );
       const link = result.paymentLink;
       if (link) {
         // Sent by Sonor, not written by the model, so the URL is always exact.
-        const script = detectScript(event.text);
         await this.graph.sendUrlButtons(
           token,
           event.psid,

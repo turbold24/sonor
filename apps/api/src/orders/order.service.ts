@@ -36,6 +36,8 @@ export interface OrderToolResult {
   output: unknown;
   /** Set when this call produced a payment link for Sonor to send. */
   paymentLink?: PaymentLinkInfo;
+  /** Set when a new draft waits for the customer's yes. */
+  awaitingConfirmation?: boolean;
 }
 
 export type CheckoutState = 'pending' | 'paid' | 'expired' | 'cancelled';
@@ -277,6 +279,7 @@ export class OrderService {
         currency: 'MNT',
         next: 'Read the items and total back and ask the customer to confirm. Call confirm_order only after they clearly agree.',
       },
+      awaitingConfirmation: true,
     };
   }
 

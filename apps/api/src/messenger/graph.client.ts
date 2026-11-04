@@ -29,8 +29,17 @@ export interface UrlButton {
   title: string;
 }
 
+/** A tappable reply under a message; a tap sends the title as the customer's message. */
+export interface QuickReply {
+  /** At most 20 characters. */
+  title: string;
+  payload: string;
+}
+
 const BUTTON_TEXT_LIMIT = 640;
 const BUTTON_TITLE_LIMIT = 20;
+const QUICK_REPLY_LIMIT = 13;
+const QUICK_REPLY_TITLE_LIMIT = 20;
 
 export class GraphError extends Error {
   constructor(
@@ -103,19 +112,29 @@ export class GraphClient {
   /**
    * Sends text, split into parts of at most 2000 characters. RESPONSE answers a message;
    * UPDATE is a proactive message, e.g. after a payment. Both need the 24-hour window.
+   * Quick replies go under the last part.
    */
   async sendText(
     pageToken: string,
     psid: string,
     text: string,
     messagingType: MessagingType = 'RESPONSE',
+    quickReplies: QuickReply[] = [],
   ): Promise<string[]> {
     const ids: string[] = [];
-    for (const part of splitMessage(text)) {
+    const parts = splitMessage(text);
+    for (const [index, part] of parts.entries()) {
+      const last = index === parts.length - 1;
       const response = await this.request('POST', '/me/messages', pageToken, {
         recipient: { id: psid },
         messaging_type: messagingType,
-        message: { text: part, metadata: OWN_MESSAGE_METADATA },
+        message: {
+          text: part,
+          metadata: OWN_MESSAGE_METADATA,
+          ...(last && quickReplies.length > 0
+            ? { quick_replies: toQuickReplies(quickReplies) }
+            : {}),
+        },
       });
       if (typeof response.message_id === 'string') {
         ids.push(response.message_id);
@@ -305,4 +324,12 @@ function safeJson(text: string): unknown {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toQuickReplies(replies: QuickReply[]) {
+  return replies.slice(0, QUICK_REPLY_LIMIT).map((reply) => ({
+    content_type: 'text',
+    title: reply.title.slice(0, QUICK_REPLY_TITLE_LIMIT),
+    payload: reply.payload,
+  }));
 }

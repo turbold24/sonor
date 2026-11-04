@@ -22,6 +22,21 @@ export function paymentButtonTitle(script: Script): string {
   return script === 'latin' ? 'Tolbor toloh' : 'Төлбөр төлөх';
 }
 
+/** Yes/no quick replies under an order summary. A tap sends the title as the answer. */
+export function confirmQuickReplies(
+  script: Script,
+): { title: string; payload: string }[] {
+  return script === 'latin'
+    ? [
+        { title: 'Tiim', payload: 'ORDER_YES' },
+        { title: 'Ugui', payload: 'ORDER_NO' },
+      ]
+    : [
+        { title: 'Тийм', payload: 'ORDER_YES' },
+        { title: 'Үгүй', payload: 'ORDER_NO' },
+      ];
+}
+
 export function paidNotice(
   script: Script,
   orderCode: string,

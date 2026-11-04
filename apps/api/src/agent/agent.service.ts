@@ -78,6 +78,8 @@ export interface AgentReply {
   fallback: TurnFallback | 'model_error';
   /** A payment link confirm_order created this turn, for the channel to send as a button. */
   paymentLink: PaymentLinkInfo | null;
+  /** The reply asks the customer to confirm a new draft order; channels can offer yes/no. */
+  askConfirmation: boolean;
 }
 
 interface TurnContext {
@@ -85,6 +87,8 @@ interface TurnContext {
   conversationId: string;
   tools: Map<string, ToolDefinition>;
   paymentLink?: PaymentLinkInfo;
+  /** The turn's last order tool left a draft waiting for a yes. */
+  awaitingConfirmation?: boolean;
 }
 
 @Injectable()
@@ -303,16 +307,21 @@ export class AgentService {
         output: step.outputs[i],
       })),
     );
+    const handoff = toolCalls.some((call) => call.name === HANDOFF_TOOL_NAME);
     return {
       reply,
       paused: false,
       duplicate: false,
-      handoff: toolCalls.some((call) => call.name === HANDOFF_TOOL_NAME),
+      handoff,
       toolCalls,
       usage: outcome?.usage ?? emptyUsage(),
       regenerated: outcome?.regenerated ?? false,
       fallback,
       paymentLink: context.paymentLink ?? null,
+      askConfirmation:
+        context.awaitingConfirmation === true &&
+        fallback === 'none' &&
+        !handoff,
     };
   }
 
@@ -348,6 +357,7 @@ export class AgentService {
           validated.args,
         );
         if (result.paymentLink) context.paymentLink = result.paymentLink;
+        context.awaitingConfirmation = result.awaitingConfirmation === true;
         return serialize(result.output);
       }
       const connector = this.connectors.forTenant(tenant);
@@ -457,6 +467,7 @@ function silentReply(status: ReceiveStatus): AgentReply {
     regenerated: false,
     fallback: 'none',
     paymentLink: null,
+    askConfirmation: false,
   };
 }
 

@@ -33,6 +33,7 @@ interface GraphBody {
   sender_action?: string;
   message?: {
     text?: string;
+    quick_replies?: { content_type: string; title: string; payload: string }[];
     attachment?: {
       payload: {
         template_type: string;
@@ -174,6 +175,10 @@ describe('Orders and checkout (e2e)', () => {
   const texts = () => graph.flatMap((body) => body.message?.text ?? []);
   const buttons = () =>
     graph.flatMap((body) => body.message?.attachment?.payload ?? []);
+  const quickReplies = () =>
+    graph.flatMap((body) =>
+      body.message?.quick_replies ? [body.message.quick_replies] : [],
+    );
   const openOrder = (psid: string) =>
     prisma.order.findFirstOrThrow({
       where: { tenantId: tenant.id, customer: { psid } },
@@ -216,6 +221,13 @@ describe('Orders and checkout (e2e)', () => {
       ),
     ]);
     expect(buttons()).toEqual([]);
+    // Yes/no buttons under the summary; a tap sends "Tiim" as the customer's message.
+    expect(quickReplies()).toEqual([
+      [
+        { content_type: 'text', title: 'Tiim', payload: 'ORDER_YES' },
+        { content_type: 'text', title: 'Ugui', payload: 'ORDER_NO' },
+      ],
+    ]);
 
     // Turn 2: the customer agrees; Sonor sends the payment button after the reply.
     graph.length = 0;
@@ -227,6 +239,7 @@ describe('Orders and checkout (e2e)', () => {
     const confirmed = await openOrder(PSID);
     expect(confirmed.status).toBe('CONFIRMED');
     expect(texts()).toEqual(['Bayarlalaa! Tolboriin tovchiig ilgeelee.']);
+    expect(quickReplies()).toEqual([]);
     const [button] = buttons();
     expect(button.template_type).toBe('button');
     expect(button.text).toContain('118,000₮');
