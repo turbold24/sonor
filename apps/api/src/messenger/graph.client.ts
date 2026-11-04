@@ -23,6 +23,8 @@ export type SenderAction = 'mark_seen' | 'typing_on' | 'typing_off';
 
 export type MessagingType = 'RESPONSE' | 'UPDATE';
 
+type HttpMethod = 'GET' | 'POST' | 'DELETE';
+
 export interface UrlButton {
   url: string;
   /** At most 20 characters. */
@@ -221,6 +223,55 @@ export class GraphClient {
   }
 
   /**
+   * Sets the Page's conversation starters (Messenger Profile ice breakers, at most 4),
+   * shown when someone opens a new chat. Each payload is its question, so a tap reaches
+   * Sonor as that question even if the postback has no title.
+   */
+  async setIceBreakers(pageToken: string, questions: string[]): Promise<void> {
+    await this.request('POST', '/me/messenger_profile', pageToken, {
+      ice_breakers: [
+        {
+          call_to_actions: questions.map((question) => ({
+            question,
+            payload: question,
+          })),
+          locale: 'default',
+        },
+      ],
+    });
+  }
+
+  /** The Page's conversation starter questions, in either of Meta's formats. */
+  async iceBreakers(pageToken: string): Promise<string[]> {
+    const response = await this.request(
+      'GET',
+      '/me/messenger_profile',
+      pageToken,
+      undefined,
+      { fields: 'ice_breakers' },
+    );
+    const profiles = Array.isArray(response.data) ? response.data : [];
+    return profiles.flatMap((profile: unknown) =>
+      records(isRecord(profile) ? profile.ice_breakers : undefined)
+        .flatMap((entry) =>
+          Array.isArray(entry.call_to_actions)
+            ? records(entry.call_to_actions)
+            : [entry],
+        )
+        .flatMap((action) =>
+          typeof action.question === 'string' ? [action.question] : [],
+        ),
+    );
+  }
+
+  /** Removes all of the Page's conversation starters. */
+  async deleteIceBreakers(pageToken: string): Promise<void> {
+    await this.request('DELETE', '/me/messenger_profile', pageToken, {
+      fields: ['ice_breakers'],
+    });
+  }
+
+  /**
    * Downloads a customer's photo from an attachment URL in a webhook event. These are
    * Meta CDN links that need no token; the URL is never logged.
    */
@@ -229,7 +280,7 @@ export class GraphClient {
   }
 
   private async request(
-    method: 'GET' | 'POST',
+    method: HttpMethod,
     path: string,
     pageToken: string,
     body?: unknown,
@@ -263,7 +314,7 @@ export class GraphClient {
   }
 
   private async attempt(
-    method: 'GET' | 'POST',
+    method: HttpMethod,
     url: URL,
     body: unknown,
   ): Promise<Record<string, unknown>> {
@@ -332,4 +383,8 @@ function toQuickReplies(replies: QuickReply[]) {
     title: reply.title.slice(0, QUICK_REPLY_TITLE_LIMIT),
     payload: reply.payload,
   }));
+}
+
+function records(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
 }

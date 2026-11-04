@@ -25,7 +25,8 @@
     "model:smoke": "tsx scripts/model-smoke.ts",
     "agent:eval": "tsc -p tsconfig.scripts.json && node dist-scripts/scripts/agent-eval.js",
     "tenant:connect-page": "tsx scripts/connect-page.ts",
-    "tenant:owner-code": "tsx scripts/owner-code.ts"
+    "tenant:owner-code": "tsx scripts/owner-code.ts",
+    "tenant:starters": "tsx scripts/starters.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

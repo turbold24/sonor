@@ -156,6 +156,63 @@ describe('GraphClient', () => {
     ]);
   });
 
+  it('sets, reads and deletes conversation starters on the Messenger profile', async () => {
+    const { client, calls } = setup(
+      json({ result: 'success' }),
+      json({
+        data: [
+          {
+            ice_breakers: [
+              {
+                call_to_actions: [
+                  { question: 'Ямар бараа байгаа вэ?', payload: 'x' },
+                  { question: 'Яаж захиалах вэ?', payload: 'y' },
+                ],
+                locale: 'default',
+              },
+            ],
+          },
+        ],
+      }),
+      json({ result: 'success' }),
+    );
+
+    await client.setIceBreakers(TOKEN, ['Ямар бараа байгаа вэ?']);
+    const questions = await client.iceBreakers(TOKEN);
+    await client.deleteIceBreakers(TOKEN);
+
+    const [set, read, remove] = calls();
+    expect(set.method).toBe('POST');
+    expect(set.url.pathname).toBe('/v26.0/me/messenger_profile');
+    expect(set.body).toEqual({
+      ice_breakers: [
+        {
+          call_to_actions: [
+            {
+              question: 'Ямар бараа байгаа вэ?',
+              payload: 'Ямар бараа байгаа вэ?',
+            },
+          ],
+          locale: 'default',
+        },
+      ],
+    });
+    expect(read.url.searchParams.get('fields')).toBe('ice_breakers');
+    expect(questions).toEqual(['Ямар бараа байгаа вэ?', 'Яаж захиалах вэ?']);
+    expect(remove.method).toBe('DELETE');
+    expect(remove.body).toEqual({ fields: ['ice_breakers'] });
+  });
+
+  it('reads conversation starters in the older flat format', async () => {
+    const { client } = setup(
+      json({
+        data: [{ ice_breakers: [{ question: 'Сайн уу?', payload: 'hi' }] }],
+      }),
+    );
+
+    await expect(client.iceBreakers(TOKEN)).resolves.toEqual(['Сайн уу?']);
+  });
+
   it('sends sender actions on their own', async () => {
     const { client, calls } = setup(json({ recipient_id: PSID }));
 
