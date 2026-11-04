@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { toolError } from '../catalog/catalog.types.js';
 import { ConnectorRegistry } from '../catalog/connector.registry.js';
 import { detectScript } from '../common/mongolian-script.js';
+import { PHOTO_MARKER } from '../common/photos.js';
 import type {
   MessageRole,
   Prisma,
@@ -12,6 +13,8 @@ import type {
 import { ModelError } from '../model/model.errors.js';
 import { ModelService } from '../model/model.service.js';
 import type {
+  ChatMessage,
+  ImageInput,
   ToolCall,
   ToolDefinition,
   TokenUsage,
@@ -34,7 +37,11 @@ import {
 import { needsDisclosure, withDisclosure } from './disclosure.js';
 import { numbersIn } from './grounding.js';
 import { HANDOFF_TOOL, HANDOFF_TOOL_NAME } from './handoff.tool.js';
-import { toChatHistory, type StoredToolCall } from './history.js';
+import {
+  toChatHistory,
+  type StoredMessage,
+  type StoredToolCall,
+} from './history.js';
 import { validateToolArgs } from './tool-args.js';
 
 const MAX_ITERATIONS = 4;
@@ -104,13 +111,14 @@ export class AgentService {
     conversationId: string,
     customerText: string,
     message: Omit<IncomingMessage, 'text'> = {},
+    images: ImageInput[] = [],
   ): Promise<AgentReply> {
     const status = await this.receive(tenantId, conversationId, {
       ...message,
       text: customerText,
     });
     if (status !== 'ready') return silentReply(status);
-    return this.respond(tenantId, conversationId, customerText);
+    return this.respond(tenantId, conversationId, customerText, images);
   }
 
   /**
@@ -159,19 +167,23 @@ export class AgentService {
     return 'ready';
   }
 
-  /** Answers the latest customer message, which receive() has already saved. */
+  /**
+   * Answers the latest customer message, which receive() has already saved. `images` are
+   * that message's photos, already downloaded; the model sees them only on this turn.
+   */
   async respond(
     tenantId: string,
     conversationId: string,
     customerText: string,
+    images: ImageInput[] = [],
   ): Promise<AgentReply> {
     const conversation = await this.findConversation(tenantId, conversationId);
     const { tenant } = conversation;
 
     const disclose = await this.mustDisclose(tenantId, conversationId);
 
-    if (!customerText.trim()) {
-      // Attachments only (photo, voice, sticker): the agent reads text for now.
+    if (!customerText.trim() && images.length === 0) {
+      // Nothing the agent can read: voice, video, a sticker, or a photo that didn't load.
       const note = unsupportedMediaReply();
       const reply = disclose ? withDisclosure(note, 'cyrillic') : note;
       await this.save(tenant.id, conversationId, [
@@ -193,9 +205,10 @@ export class AgentService {
         where: { tenantId, conversationId },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: HISTORY_LIMIT,
-        select: { role: true, text: true, toolCalls: true },
+        select: { role: true, text: true, toolCalls: true, attachments: true },
       }),
     ]);
+    const history = withImages(toChatHistory([...rows].reverse()), images);
 
     // Orders are built in for DEMO tenants, whose catalog and prices live in Sonor.
     const ordering = tenant.connectorType === 'DEMO';
@@ -212,7 +225,8 @@ export class AgentService {
       conversationId,
       tools: new Map(tools.map((tool) => [tool.name, tool])),
     };
-    const script = detectScript(customerText);
+    // A photo without text: answer in the script the customer last wrote in.
+    const script = detectScript(customerText.trim() || lastCustomerText(rows));
     const safetyIdentifier = createHash('sha256')
       .update(`${tenant.id}:${conversation.customerId}`)
       .digest('hex')
@@ -228,7 +242,7 @@ export class AgentService {
               role: 'system',
               content: buildSystemPrompt(tenant, brief, script, { ordering }),
             },
-            ...toChatHistory(rows.reverse()),
+            ...history,
           ],
           tools,
           maxIterations: MAX_ITERATIONS,
@@ -412,6 +426,24 @@ function serialize(value: unknown): string {
   return json.length > MAX_TOOL_OUTPUT_CHARS
     ? `${json.slice(0, MAX_TOOL_OUTPUT_CHARS)}…(truncated)`
     : json;
+}
+
+/** Attaches the current message's photos to its user turn, the last one in history. */
+function withImages(
+  history: ChatMessage[],
+  images: ImageInput[],
+): ChatMessage[] {
+  if (images.length === 0) return history;
+  const last = history.at(-1);
+  if (last?.role === 'user') {
+    return [...history.slice(0, -1), { ...last, images }];
+  }
+  return [...history, { role: 'user', content: PHOTO_MARKER, images }];
+}
+
+/** The newest customer text in rows ordered newest first. */
+function lastCustomerText(rows: StoredMessage[]): string {
+  return rows.find((row) => row.role === 'CUSTOMER' && row.text)?.text ?? '';
 }
 
 function silentReply(status: ReceiveStatus): AgentReply {

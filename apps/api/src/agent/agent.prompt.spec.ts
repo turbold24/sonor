@@ -38,6 +38,15 @@ describe('buildSystemPrompt', () => {
     );
   });
 
+  it('numbers the photo rule after the other rules', () => {
+    expect(buildSystemPrompt(tenant, null, 'cyrillic')).toMatch(
+      /\n11\. "\[зураг\]".*search_products.*request_handoff/,
+    );
+    expect(
+      buildSystemPrompt(tenant, null, 'cyrillic', { ordering: true }),
+    ).toMatch(/\n13\. .*\n14\. "\[зураг\]"/);
+  });
+
   it('fences the business brief as data', () => {
     const prompt = buildSystemPrompt(
       tenant,

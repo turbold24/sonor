@@ -56,4 +56,27 @@ describe('toChatHistory', () => {
 
     expect(toChatHistory(rows)).toEqual([{ role: 'user', content: 'hi' }]);
   });
+
+  it('marks customer photos and skips stickers', () => {
+    const photo = { type: 'image', payload: { url: 'https://a.test/1.jpg' } };
+    const like = {
+      type: 'image',
+      payload: { url: 'https://a.test/like.png', sticker_id: 369239263222822 },
+    };
+    const rows: StoredMessage[] = [
+      { role: 'CUSTOMER', text: null, toolCalls: null, attachments: [photo] },
+      {
+        role: 'CUSTOMER',
+        text: 'Энэ байгаа юу?',
+        toolCalls: null,
+        attachments: [photo],
+      },
+      { role: 'CUSTOMER', text: null, toolCalls: null, attachments: [like] },
+    ];
+
+    expect(toChatHistory(rows)).toEqual([
+      { role: 'user', content: '[зураг]' },
+      { role: 'user', content: 'Энэ байгаа юу?\n[зураг]' },
+    ]);
+  });
 });

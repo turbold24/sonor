@@ -19,7 +19,11 @@ import {
 } from '../src/messenger/owner-messages.js';
 import { signBody } from '../src/messenger/signature.js';
 import { ModelService } from '../src/model/model.service.js';
-import type { ChatResult } from '../src/model/model.types.js';
+import type {
+  ChatMessage,
+  ChatResult,
+  ToolDefinition,
+} from '../src/model/model.types.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
 // The whole webhook path against the local Postgres: signature check, event parsing,
@@ -31,6 +35,9 @@ const VERIFY_TOKEN = 'e2e-verify-token';
 const APP_ID = '424242';
 const PAGE_INBOX_APP_ID = 263902037430900;
 const PAGE_TOKEN = 'e2e-page-token';
+// Customer photos come from Meta's CDN; the fake fetch serves them from this host.
+const PHOTO_HOST = 'photos.example.test';
+const PHOTO_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
 const REPLY = 'Сайн байна уу! Танд юугаар туслах вэ?';
 // A chat's first bot reply also says it's automated, in the customer's script.
 const FIRST_LATIN = withDisclosure(REPLY, 'latin');
@@ -56,24 +63,33 @@ describe('Messenger webhook (e2e)', () => {
   let messenger: MessengerService;
   let tenant: Tenant;
   const graphCalls: GraphCall[] = [];
-  const modelChat = vi.fn((): Promise<ChatResult> =>
-    Promise.resolve({
-      text: REPLY,
-      toolCalls: [],
-      finishReason: 'stop',
-      usage: {
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-        cachedInputTokens: 0,
-        reasoningTokens: 0,
-      },
-      model: 'fake',
-    }),
+  const modelChat = vi.fn(
+    (_messages: ChatMessage[], _tools: ToolDefinition[]): Promise<ChatResult> =>
+      Promise.resolve({
+        text: REPLY,
+        toolCalls: [],
+        finishReason: 'stop',
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cachedInputTokens: 0,
+          reasoningTokens: 0,
+        },
+        model: 'fake',
+      }),
   );
   const fakeFetch = vi.fn<typeof fetch>((input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.host === PHOTO_HOST) {
+      return Promise.resolve(
+        new Response(PHOTO_BYTES, {
+          headers: { 'content-type': 'image/jpeg' },
+        }),
+      );
+    }
     graphCalls.push({
-      url: new URL(input instanceof Request ? input.url : input),
+      url,
       body: JSON.parse(init?.body as string) as GraphCall['body'],
     });
     return Promise.resolve(
@@ -300,7 +316,7 @@ describe('Messenger webhook (e2e)', () => {
 
   it("answers one customer's messages in order", async () => {
     const psid = uid('psid');
-    const base = await modelChat();
+    const base = await modelChat([], []);
     modelChat.mockClear();
     modelChat
       .mockResolvedValueOnce({ ...base, text: 'Эхний хариу.' })
@@ -429,11 +445,47 @@ describe('Messenger webhook (e2e)', () => {
     expect((await conversationOf(psid)).botPaused).toBe(false);
   });
 
-  it('answers attachments with a text-only note and keeps the attachment', async () => {
+  it('shows the model a photo and keeps the attachment', async () => {
     const psid = uid('psid');
     const attachment = {
       type: 'image',
-      payload: { url: 'https://example.test/deel.jpg' },
+      payload: { url: `https://${PHOTO_HOST}/deel.jpg` },
+    };
+
+    await deliver(
+      payload(
+        tenant.facebookPageId,
+        fromCustomer(psid, { attachments: [attachment] }),
+      ),
+    );
+
+    expect(modelChat).toHaveBeenCalledTimes(1);
+    const sent = modelChat.mock.calls[0][0];
+    expect(sent.filter((message) => message.role === 'user')).toEqual([
+      {
+        role: 'user',
+        content: '[зураг]',
+        images: [
+          {
+            url: `data:image/jpeg;base64,${Buffer.from(PHOTO_BYTES).toString('base64')}`,
+          },
+        ],
+      },
+    ]);
+    expect(sentTexts()).toEqual([withDisclosure(REPLY, 'cyrillic')]);
+    const { messages } = await conversationOf(psid);
+    expect(messages[0]).toMatchObject({
+      role: 'CUSTOMER',
+      text: null,
+      attachments: [attachment],
+    });
+  });
+
+  it('answers a voice message with a fixed note and keeps the attachment', async () => {
+    const psid = uid('psid');
+    const attachment = {
+      type: 'audio',
+      payload: { url: `https://${PHOTO_HOST}/voice.mp4` },
     };
 
     await deliver(

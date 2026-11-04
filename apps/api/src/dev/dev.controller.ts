@@ -10,12 +10,16 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { AgentService, type AgentReply } from '../agent/agent.service.js';
 import { ConversationService } from '../agent/conversation.service.js';
+import { downloadPhoto, PhotoError } from '../common/photos.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 interface DevChatRequest {
   tenantSlug: string;
   customerRef: string;
+  /** May be empty when imageUrl is set. */
   text: string;
+  /** An https photo, downloaded and sent like a Messenger photo. */
+  imageUrl?: string;
 }
 
 export interface DevChatResponse extends AgentReply {
@@ -37,7 +41,7 @@ export class DevController {
   @HttpCode(200)
   async chat(@Body() body: unknown): Promise<DevChatResponse> {
     this.assertNotProduction();
-    const { tenantSlug, customerRef, text } = parseRequest(body);
+    const { tenantSlug, customerRef, text, imageUrl } = parseRequest(body);
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { slug: tenantSlug },
@@ -49,7 +53,25 @@ export class DevController {
       tenant.id,
       `dev:${customerRef}`,
     );
-    const reply = await this.agent.reply(tenant.id, conversation.id, text);
+    const images = imageUrl
+      ? [
+          await downloadPhoto(imageUrl).catch((error: unknown) => {
+            if (error instanceof PhotoError) {
+              throw new BadRequestException(`image not read: ${error.message}`);
+            }
+            throw error;
+          }),
+        ]
+      : [];
+    const reply = await this.agent.reply(
+      tenant.id,
+      conversation.id,
+      text,
+      imageUrl
+        ? { attachments: [{ type: 'image', payload: { url: imageUrl } }] }
+        : {},
+      images,
+    );
     return { conversationId: conversation.id, ...reply };
   }
 
@@ -84,7 +106,7 @@ function parseRequest(body: unknown): DevChatRequest {
   const value = (
     typeof body === 'object' && body !== null ? body : {}
   ) as Record<string, unknown>;
-  const { tenantSlug, customerRef, text } = value;
+  const { tenantSlug, customerRef, text = '', imageUrl } = value;
   if (typeof tenantSlug !== 'string' || !tenantSlug) {
     throw new BadRequestException('tenantSlug is required');
   }
@@ -93,8 +115,20 @@ function parseRequest(body: unknown): DevChatRequest {
       'customerRef must be 1-64 letters, digits, _ . or -',
     );
   }
-  if (typeof text !== 'string' || !text.trim() || text.length > 2000) {
-    throw new BadRequestException('text must be 1-2000 characters');
+  if (
+    imageUrl !== undefined &&
+    (typeof imageUrl !== 'string' || !imageUrl.startsWith('https://'))
+  ) {
+    throw new BadRequestException('imageUrl must be an https URL');
   }
-  return { tenantSlug, customerRef, text: text.trim() };
+  if (
+    typeof text !== 'string' ||
+    (!text.trim() && !imageUrl) ||
+    text.length > 2000
+  ) {
+    throw new BadRequestException(
+      'text must be 1-2000 characters (or empty with imageUrl)',
+    );
+  }
+  return { tenantSlug, customerRef, text: text.trim(), imageUrl };
 }

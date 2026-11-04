@@ -1,3 +1,4 @@
+import { PHOTO_MARKER, photoUrls } from '../common/photos.js';
 import type { MessageRole } from '../generated/prisma/client.js';
 import type { ChatMessage, ToolCall } from '../model/model.types.js';
 
@@ -5,6 +6,7 @@ export interface StoredMessage {
   role: MessageRole;
   text: string | null;
   toolCalls: unknown;
+  attachments?: unknown;
 }
 
 // Type aliases rather than interfaces so they're assignable to Prisma JSON input.
@@ -24,8 +26,9 @@ export type StoredToolResult = {
 
 /**
  * Rebuilds model history from stored messages (oldest first). Owner replies count as
- * the shop's side. Tool calls are kept only with their results, so a window that cuts
- * through a tool step never produces an unpaired call.
+ * the shop's side. A customer's photo shows as PHOTO_MARKER; only the current message's
+ * photos are sent as images. Tool calls are kept only with their results, so a window
+ * that cuts through a tool step never produces an unpaired call.
  */
 export function toChatHistory(rows: StoredMessage[]): ChatMessage[] {
   const outputs = new Map<string, string>();
@@ -37,9 +40,11 @@ export function toChatHistory(rows: StoredMessage[]): ChatMessage[] {
   const history: ChatMessage[] = [];
   for (const row of rows) {
     switch (row.role) {
-      case 'CUSTOMER':
-        if (row.text) history.push({ role: 'user', content: row.text });
+      case 'CUSTOMER': {
+        const content = customerContent(row);
+        if (content) history.push({ role: 'user', content });
         break;
+      }
 
       case 'OWNER':
         if (row.text) history.push({ role: 'assistant', content: row.text });
@@ -71,6 +76,11 @@ export function toChatHistory(rows: StoredMessage[]): ChatMessage[] {
     }
   }
   return history;
+}
+
+function customerContent(row: StoredMessage): string {
+  const photo = photoUrls(row.attachments).length > 0 ? PHOTO_MARKER : null;
+  return [row.text, photo].filter(Boolean).join('\n');
 }
 
 function toToolCall(call: StoredToolCall): ToolCall {

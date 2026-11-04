@@ -1,5 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { Logger } from '@nestjs/common';
+import { downloadPhoto } from '../common/photos.js';
+import type { ImageInput } from '../model/model.types.js';
 import { splitMessage } from './message-split.js';
 
 // Messenger Send API on the Graph API (dev docs: send-messages, sender-actions).
@@ -197,6 +199,14 @@ export class GraphClient {
       undefined,
       { subscribed_fields: fields.join(',') },
     );
+  }
+
+  /**
+   * Downloads a customer's photo from an attachment URL in a webhook event. These are
+   * Meta CDN links that need no token; the URL is never logged.
+   */
+  fetchPhoto(url: string): Promise<ImageInput> {
+    return downloadPhoto(url, this.fetch);
   }
 
   private async request(

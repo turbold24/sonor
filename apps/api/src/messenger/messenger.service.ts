@@ -5,7 +5,9 @@ import { ConversationService } from '../agent/conversation.service.js';
 import { HANDOFF_TOOL_NAME } from '../agent/handoff.tool.js';
 import { decryptSecret, parseEncryptionKey } from '../common/encryption.js';
 import { detectScript, type Script } from '../common/mongolian-script.js';
+import { PHOTO_MARKER, photoUrls } from '../common/photos.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import type { ImageInput } from '../model/model.types.js';
 import {
   paymentButtonText,
   paymentButtonTitle,
@@ -130,7 +132,13 @@ export class MessengerService {
 
     let result: AgentReply;
     try {
-      result = await this.agent.respond(tenant.id, conversation.id, event.text);
+      const images = await this.readPhotos(tenant.id, event);
+      result = await this.agent.respond(
+        tenant.id,
+        conversation.id,
+        event.text,
+        images,
+      );
     } finally {
       clearInterval(typing);
     }
@@ -163,7 +171,8 @@ export class MessengerService {
         tenant,
         conversation.id,
         typeof reason === 'string' ? reason : undefined,
-        event.text,
+        // The agent answered, so a message without text had a photo.
+        event.text || PHOTO_MARKER,
       );
     }
   }
@@ -209,6 +218,23 @@ export class MessengerService {
         `notice not delivered tenant=${tenantId} conversation=${conversationId}: ${describe(error)}`,
       );
     }
+  }
+
+  /** Downloads the event's photos. One that fails is logged and left out. */
+  private async readPhotos(
+    tenantId: string,
+    event: MessengerEvent,
+  ): Promise<ImageInput[]> {
+    const results = await Promise.allSettled(
+      photoUrls(event.attachments).map((url) => this.graph.fetchPhoto(url)),
+    );
+    return results.flatMap((result) => {
+      if (result.status === 'fulfilled') return [result.value];
+      this.logger.warn(
+        `photo not read tenant=${tenantId}: ${describe(result.reason)}`,
+      );
+      return [];
+    });
   }
 
   /** Echoes of Sonor's own replies carry our metadata tag (and our app ID). */
