@@ -2,7 +2,7 @@
 
 A Mongolian-language AI sales agent for small businesses on Facebook Messenger, built on Muse Spark through the Meta Model API.
 
-**Demo video:** TODO: add the demo video link.
+**Demo video:** [youtu.be/_j8ZD-3esaw](https://youtu.be/_j8ZD-3esaw) · **Post on X:** [x.com/turu_mn](https://x.com/turu_mn/status/2118149344113332256)
 
 > **Status, 4 Nov 2026.** Implemented and tested: the multi-tenant data model, two fictional demo shops, the Muse Spark model layer (tool calling, encrypted reasoning replay, retries, per-tenant daily token budget), Cyrillic/Latin product search, the data connectors, the agent loop with a price grounding check and a stock policy, handoff to a human (the bot pauses itself), the Facebook Messenger channel (signed webhook, Send API replies, owner takeover from the Page inbox), ordering (order drafts priced on the server, confirmation, a Messenger payment button and a demo checkout page), owner alerts on Messenger (handoffs and paid orders, with a `/resume` command), questions asked with a product photo (Muse Spark reads the photo, then searches the catalog), yes/no quick replies under order summaries, conversation starters on the Page, a local `/dev/chat` endpoint and the `pnpm agent:eval` suite. Sonor is deployed on Railway, with model calls through a small relay on Vercel, and answers a real test Page (Дулаан Дээл) on Messenger; ordering, owner alerts and the bot disclosure have run there too. The checkout is a demo where no money moves. **Planned**, not in the repository yet: a real payment provider (QPay). The `PlatformConnector` is tested only against a mocked HTTP layer, not the real platform. Each section below says which parts exist.
 
@@ -253,7 +253,7 @@ Implemented and tested:
 
 ## What was built during the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026)
 
-**Everything in this repository was written during the hackathon.** The first commit is `5fb954f` on 2026-11-02 at 12:11 (UTC+8). `git log --reverse --date=iso` lists every commit with its date.
+**Everything in this repository was written during the hackathon.** The first commit is `5fb954f` on 2026-11-02 at 12:11 (UTC+8), and the last code commit is `ff7c78c` on 2026-11-04 at 15:15 (UTC+8); later commits change only this README. `git log --reverse --date=iso` lists every commit with its date.
 
 **Pre-existing, not in this repository:** the author's private multi-tenant platform and its website chatbot. None of their code is here. Sonor's `PlatformConnector` reaches the platform only through its HTTP integration API.
 
@@ -272,7 +272,7 @@ Timeline (from `git log`, times UTC+8):
 
 | When           | Work                                                                                                                                              |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Oct 26 – Nov 1 | Planning, research and setup (Meta developer and Model API accounts); no code                                                                     |
+| Oct 26 – Nov 1 | Planning, research and account setup (Meta developer, Model API, Messenger app); no code                                                          |
 | Nov 2, 12:11   | Repository setup: pnpm workspace, ESLint and Prettier, NestJS app with `/health`, Docker Compose Postgres, first README                           |
 | Nov 2, 12:31   | Prisma 7 with PostgreSQL, data model and first migration, AES-256-GCM helper for secrets, seed with two fictional shops                           |
 | Nov 2, 13:26   | Model layer: provider-neutral interface, Muse Spark provider on the Responses API, per-tenant daily token limit, unit tests, `pnpm model:smoke`   |
